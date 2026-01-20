@@ -1,0 +1,192 @@
+/*
+ *   Copyright (c) 2025 Laith Alkhaddam aka Iconical.
+ *   All rights reserved.
+
+ *   Licensed under the Apache License, Version 2.0 (the "License");
+ *   you may not use this file except in compliance with the License.
+ *   You may obtain a copy of the License at
+
+ *   http://www.apache.org/licenses/LICENSE-2.0
+
+ *   Unless required by applicable law or agreed to in writing, software
+ *   distributed under the License is distributed on an "AS IS" BASIS,
+ *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *   See the License for the specific language governing permissions and
+ *   limitations under the License.
+ */
+
+:root {
+  --bg: #0f0f12;
+  --surface: #1a1a20;
+  --border: #2e2e38;
+  --brand: #8b5cf6;
+  --brand2: #7c3aed;
+  --muted: #9ca3af;
+  --text: #f3f4f6;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  height: 100%;
+}
+
+.options-body {
+  overflow: hidden;
+}
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+  margin: 0;
+}
+
+.options-section {
+  width: 100%;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.options-wrap {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.credits {
+  text-align: center;
+}
+.credits h3 {
+  margin: 0 0 6px;
+}
+.credits p {
+  margin: 0 0 10px;
+  color: var(--muted);
+}
+.credits .socials {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.credits .socials a {
+  color: var(--brand);
+  text-decoration: none;
+}
+.credits .socials a:hover {
+  color: var(--brand2);
+  text-decoration: underline;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+}
+.card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: var(--surface);
+}
+.label {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+input,
+textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #111115;
+  color: var(--text);
+}
+button {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+button.primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+button.primary:hover {
+  background: var(--brand2);
+}
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.status {
+  color: var(--muted);
+  font-size: 12px;
+  min-height: 16px;
+}
+.tabs {
+  display: grid;
+  padding: 12px;
+  gap: 8px;
+}
+.tabbar {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  background: var(--surface);
+  padding: 6px;
+  border-radius: 12px;
+}
+.tabbtn {
+  border: none;
+  background: transparent;
+  padding: 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  color: #6b7280;
+}
+.tabbtn[aria-selected="true"] {
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+.switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  background: #d1d5db;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.switch[data-on="true"] {
+  background: var(--brand);
+}
+.switch .knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border-radius: 999px;
+  transition: transform 0.2s;
+}
+.switch[data-on="true"] .knob {
+  transform: translateX(20px);
+}
+
+.options-wrap > .card:last-child {
+  margin-bottom: 0;
+}

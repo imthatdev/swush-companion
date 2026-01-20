@@ -1,0 +1,40 @@
+{
+  "name": "swush-companion",
+  "version": "2.0.0",
+  "private": true,
+  "author": "Laith (Iconical) <https://x.com/imthatdevy>",
+  "homepage": "https://iconical.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/imthatdev/swush-companion"
+  },
+  "bugs": {
+    "url": "https://github.com/imthatdev/swush-companion/issues"
+  },
+  "sponsor": {
+    "url": "https://iconical.dev/sponsor"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "zip": "vite build && cd dist && zip -r ../swush-companion.zip . -x \"*.map\"",
+    "v:patch": "npm version patch --no-git-tag-version",
+    "v:minor": "npm version minor --no-git-tag-version",
+    "v:major": "npm version major --no-git-tag-version"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0",
+    "@types/chrome": "^0.0.274",
+    "@types/node": "^24.3.0",
+    "@types/react": "^18.3.8",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.7"
+  }
+}
