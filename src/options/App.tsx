@@ -16,200 +16,279 @@
  */
 
 import * as React from "react";
-import { saveSettings, getSettings } from "../lib/storage";
+import { clearSettings, getSettings, saveSettings } from "../lib/storage";
+import { pollDeviceToken, startDeviceFlow } from "../lib/api";
+
+type Tone = "muted" | "success" | "error";
 
 export default function OptionsApp() {
   const [baseUrl, setBaseUrl] = React.useState("");
-  const [token, setToken] = React.useState("");
-  const [status, setStatus] = React.useState("");
-  const [endpoints, setEndpoints] = React.useState({
-    bookmarks: "/api/v1/bookmarks",
-    notes: "/api/v1/notes",
-    files: "/api/v1/upload",
-    shorten: "/api/v1/shorten",
+  const [apiKey, setApiKey] = React.useState("");
+  const [status, setStatus] = React.useState<{ tone: Tone; message: string }>({
+    tone: "muted",
+    message: "",
   });
-  const EXTENSION_ID = "swush-companion";
-  const [loginInProgress, setLoginInProgress] = React.useState(false);
-  const [redirectUrl, setRedirectUrl] = React.useState<string>("");
-  React.useEffect(() => {
-    if (chrome && chrome.identity && chrome.identity.getRedirectURL) {
-      setRedirectUrl(chrome.identity.getRedirectURL());
-    }
-  }, []);
+  const [flow, setFlow] = React.useState<{
+    deviceCode: string;
+    userCode: string;
+    verificationUri: string;
+    verificationUriComplete: string;
+    interval: number;
+  } | null>(null);
+  const [isConnecting, setIsConnecting] = React.useState(false);
+  const [polling, setPolling] = React.useState(false);
+  const [manualKey, setManualKey] = React.useState("");
 
   React.useEffect(() => {
     (async () => {
       const s = await getSettings();
       setBaseUrl(s.baseUrl || "");
-      setToken(s.token || "");
-      setEndpoints({
-        bookmarks: s.endpoints?.bookmarks || "/api/v1/bookmarks",
-        notes: s.endpoints?.notes || "/api/v1/notes",
-        files: s.endpoints?.files || "/api/v1/upload",
-        shorten: s.endpoints?.shorten || "/api/v1/shorten",
-      });
+      setApiKey(s.apiKey || "");
+      setManualKey(s.apiKey || "");
     })();
   }, []);
 
-  async function save() {
-    setStatus("");
+  const connected = Boolean(baseUrl && apiKey);
+
+  const setMessage = (tone: Tone, message: string) =>
+    setStatus({ tone, message });
+
+  const normalizeBaseUrl = (value: string) =>
+    value.trim().replace(/\/+$/, "");
+
+  async function startConnect() {
+    const normalized = normalizeBaseUrl(baseUrl);
+    if (!normalized) {
+      setMessage("error", "Enter your Swush base URL first.");
+      return;
+    }
+
+    setBaseUrl(normalized);
+    setIsConnecting(true);
+    setMessage("muted", "Creating device code...");
     try {
-      await saveSettings({ baseUrl, token, endpoints });
-      setStatus("Saved ✓");
+      const extensionId = chrome.runtime?.id || "swush-extension";
+      const result = await startDeviceFlow(normalized, extensionId);
+      setFlow({
+        deviceCode: result.device_code,
+        userCode: result.user_code,
+        verificationUri: result.verification_uri,
+        verificationUriComplete: result.verification_uri_complete,
+        interval: result.interval || 5,
+      });
+      setMessage("success", "Device code created. Approve in Swush.");
+      window.open(result.verification_uri_complete, "_blank");
+      setPolling(true);
     } catch (e: any) {
-      setStatus("Error: " + e.message);
+      setMessage("error", e.message || "Failed to start device flow.");
+    } finally {
+      setIsConnecting(false);
     }
   }
 
-  async function handleLogin() {
-    if (!baseUrl) {
-      setStatus("Please enter your main URL first.");
-      return;
-    }
-    if (!redirectUrl) {
-      setStatus("Extension redirect URL not available.");
-      return;
-    }
-    setLoginInProgress(true);
-    setStatus("");
-    const loginUrl = `${baseUrl.replace(/\/$/, "")}/api/v1/auth/extension-login?redirect_uri=${encodeURIComponent(redirectUrl)}&extension_id=${encodeURIComponent(EXTENSION_ID)}`;
-    chrome.identity.launchWebAuthFlow(
-      {
-        url: loginUrl,
-        interactive: true,
-      },
-      (redirectedTo) => {
-        setLoginInProgress(false);
-        if (chrome.runtime.lastError) {
-          setStatus("Login failed: " + chrome.runtime.lastError.message);
+  React.useEffect(() => {
+    if (!flow || !polling) return;
+
+    let timer: number | null = null;
+    let cancelled = false;
+
+    const tick = async () => {
+      if (cancelled) return;
+      try {
+        const result = await pollDeviceToken(
+          normalizeBaseUrl(baseUrl),
+          flow.deviceCode,
+        );
+        if (result.ok) {
+          await saveSettings({
+            baseUrl: normalizeBaseUrl(baseUrl),
+            apiKey: result.data.api_key,
+          });
+          setApiKey(result.data.api_key);
+          setManualKey(result.data.api_key);
+          setFlow(null);
+          setPolling(false);
+          setMessage("success", "Connected! API key saved.");
           return;
         }
-        if (redirectedTo) {
-          try {
-            const url = new URL(redirectedTo);
-            const token = url.searchParams.get("token");
-            if (token) {
-              setToken(token);
-              saveSettings({ baseUrl, token, endpoints });
-              setStatus("Login successful ✓");
-              return;
-            }
-          } catch (e) {
-            setStatus("Login failed: Invalid redirect URL");
-          }
+
+        if (
+          result.error === "authorization_pending" ||
+          result.error === "slow_down"
+        ) {
+          const nextInterval = (result.interval || flow.interval || 5) * 1000;
+          timer = window.setTimeout(tick, nextInterval);
+          return;
         }
-        setStatus("Login failed: No token received");
-      },
-    );
+
+        setPolling(false);
+        setMessage(
+          "error",
+          result.error_description || "Device flow failed.",
+        );
+      } catch (e: any) {
+        setPolling(false);
+        setMessage("error", e.message || "Device flow failed.");
+      }
+    };
+
+    timer = window.setTimeout(tick, flow.interval * 1000);
+
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [flow, polling, baseUrl]);
+
+  async function saveManualKey() {
+    const normalized = normalizeBaseUrl(baseUrl);
+    if (!normalized) {
+      setMessage("error", "Enter your Swush base URL first.");
+      return;
+    }
+    if (!manualKey.trim()) {
+      setMessage("error", "Paste your API key first.");
+      return;
+    }
+    await saveSettings({ baseUrl: normalized, apiKey: manualKey.trim() });
+    setApiKey(manualKey.trim());
+    setMessage("success", "API key saved.");
+  }
+
+  async function saveBaseUrl() {
+    const normalized = normalizeBaseUrl(baseUrl);
+    if (!normalized) {
+      setMessage("error", "Enter your Swush base URL first.");
+      return;
+    }
+    await saveSettings({ baseUrl: normalized, apiKey });
+    setBaseUrl(normalized);
+    setMessage("success", "Base URL saved.");
+  }
+
+  async function disconnect() {
+    await clearSettings();
+    setApiKey("");
+    setManualKey("");
+    setFlow(null);
+    setPolling(false);
+    setMessage("muted", "Disconnected.");
   }
 
   return (
-    <div className="options-section">
-      <div className="options-wrap">
-        <div className="card">
-          <h3>Connection</h3>
-          <div className="label">Base URL</div>
+    <div className="options-shell">
+      <header className="options-hero">
+        <div>
+          <div className="eyebrow">Swush Companion</div>
+          <h1>Connect your workspace</h1>
+          <p>
+            Use the device flow to approve the extension and mint a fresh API
+            key.
+          </p>
+        </div>
+        <div className={`pill ${connected ? "pill-ok" : "pill-warn"}`}>
+          {connected ? "Connected" : "Not connected"}
+        </div>
+      </header>
+
+      <section className="card">
+        <h2>Base URL</h2>
+        <p>Point the extension at your Swush instance.</p>
+        <label className="field">
+          <span>Swush URL</span>
           <input
             type="url"
             placeholder="https://your-domain"
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
           />
-          <div style={{ marginTop: 12 }}>
+        </label>
+        <div className="inline actions">
+          <button className="secondary" onClick={saveBaseUrl}>
+            Save URL
+          </button>
+          <div className="helper">Required before connecting.</div>
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>Device flow</h2>
+        <p>Approve the extension in your Swush account.</p>
+        {flow ? (
+          <div className="stack">
+            <div className="code-box">
+              <div className="eyebrow">Enter this code</div>
+              <div className="code">{flow.userCode}</div>
+              <button
+                className="secondary"
+                onClick={() => window.open(flow.verificationUriComplete, "_blank")}
+              >
+                Open verification page
+              </button>
+            </div>
+            <div className="helper">
+              Waiting for approval. This expires in about 10 minutes.
+            </div>
+          </div>
+        ) : (
+          <div className="inline actions">
             <button
               className="primary"
-              disabled={!baseUrl || loginInProgress}
-              onClick={handleLogin}
-              style={{ marginRight: 8 }}
+              disabled={isConnecting || polling}
+              onClick={startConnect}
             >
-              {loginInProgress ? "Logging in..." : "Login with Swush"}
+              {isConnecting || polling ? "Waiting for approval..." : "Connect"}
             </button>
+            <div className="helper">Opens Swush in a new tab.</div>
           </div>
-          <div className="label" style={{ marginTop: 8 }}>
-            API Token
-          </div>
+        )}
+      </section>
+
+      <section className="card">
+        <h2>API key (manual)</h2>
+        <p>Already have one? Paste it here.</p>
+        <label className="field">
+          <span>API key</span>
           <input
             type="text"
-            placeholder="paste your token"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
+            placeholder="swush_..."
+            value={manualKey}
+            onChange={(e) => setManualKey(e.target.value)}
           />
-        </div>
-
-        <div className="card">
-          <h3>Endpoints (optional)</h3>
-          <div className="grid2">
-            <div>
-              <div className="label">Bookmarks</div>
-              <input
-                value={endpoints.bookmarks}
-                onChange={(e) =>
-                  setEndpoints({ ...endpoints, bookmarks: e.target.value })
-                }
-              />
-            </div>
-            <div>
-              <div className="label">Notes</div>
-              <input
-                value={endpoints.notes}
-                onChange={(e) =>
-                  setEndpoints({ ...endpoints, notes: e.target.value })
-                }
-              />
-            </div>
-            <div>
-              <div className="label">Files</div>
-              <input
-                value={endpoints.files}
-                onChange={(e) =>
-                  setEndpoints({ ...endpoints, files: e.target.value })
-                }
-              />
-            </div>
-            <div>
-              <div className="label">Shorten</div>
-              <input
-                value={endpoints.shorten}
-                onChange={(e) =>
-                  setEndpoints({ ...endpoints, shorten: e.target.value })
-                }
-              />
-            </div>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              marginTop: 8,
-            }}
-          >
-            <button className="primary" onClick={save}>
-              Save
+        </label>
+        <div className="inline actions">
+          <button className="secondary" onClick={saveManualKey}>
+            Save key
+          </button>
+          {connected && (
+            <button className="danger" onClick={disconnect}>
+              Disconnect
             </button>
-          </div>
-          <div className="status">{status}</div>
+          )}
         </div>
+      </section>
 
-        <div className="card credits">
-          <h3>Made with 💜 by Iconical</h3>
-          <p>Thanks for using Swush.</p>
-          <div className="socials">
-            <a href="https://x.com/imthatdevy" target="_blank" rel="noreferrer">
-              X / @imthatdevy
-            </a>
-            <a href="https://iconical.dev" target="_blank" rel="noreferrer">
-              iconical.dev
-            </a>
-            <a
-              href="https://github.com/imthatdev"
-              target="_blank"
-              rel="noreferrer"
-            >
-              github.com/imthatdev
-            </a>
-          </div>
+      <div className={`status status-${status.tone}`}>{status.message}</div>
+
+      <section className="card credits">
+        <h3>Made with care by Iconical</h3>
+        <p>Thanks for using Swush.</p>
+        <div className="socials">
+          <a href="https://x.com/imthatdevy" target="_blank" rel="noreferrer">
+            X / @imthatdevy
+          </a>
+          <a href="https://iconical.dev" target="_blank" rel="noreferrer">
+            iconical.dev
+          </a>
+          <a
+            href="https://github.com/imthatdev"
+            target="_blank"
+            rel="noreferrer"
+          >
+            github.com/imthatdev
+          </a>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

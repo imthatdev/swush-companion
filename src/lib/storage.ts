@@ -17,26 +17,32 @@
 
 export type Settings = {
   baseUrl: string;
-  token: string;
-  endpoints?: {
-    bookmarks?: string;
-    notes?: string;
-    files?: string;
-    shorten?: string;
-  };
+  apiKey: string;
 };
+
+const SETTINGS_KEYS = ["baseUrl", "apiKey"] as const;
+
 export async function getSettings(): Promise<Settings> {
-  const data = await chrome.storage.sync.get(["baseUrl", "token", "endpoints"]);
-  return {
-    baseUrl: (data.baseUrl || "").replace(/\/+$/, ""),
-    token: data.token || "",
-    endpoints: data.endpoints || {},
-  };
+  const data = await chrome.storage.sync.get([
+    ...SETTINGS_KEYS,
+    "token",
+  ]);
+  const baseUrl = (data.baseUrl || "").replace(/\/+$/, "");
+  const apiKey = data.apiKey || data.token || "";
+  if (data.token && !data.apiKey) {
+    await chrome.storage.sync.set({ apiKey });
+    await chrome.storage.sync.remove(["token"]);
+  }
+  return { baseUrl, apiKey };
 }
+
 export async function saveSettings(s: Settings) {
   await chrome.storage.sync.set({
     baseUrl: s.baseUrl.replace(/\/+$/, ""),
-    token: s.token,
-    endpoints: s.endpoints || {},
+    apiKey: s.apiKey,
   });
+}
+
+export async function clearSettings() {
+  await chrome.storage.sync.remove([...SETTINGS_KEYS]);
 }

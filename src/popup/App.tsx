@@ -17,6 +17,7 @@
 
 import * as React from "react";
 import { addBookmark, addNote, shortenLink, uploadFileBlob } from "../lib/api";
+import { getSettings } from "../lib/storage";
 
 function useCurrentTab() {
   const [tab, setTab] = React.useState<{ url?: string; title?: string }>({});
@@ -28,69 +29,148 @@ function useCurrentTab() {
   return tab;
 }
 
+function useSettings() {
+  const [settings, setSettings] = React.useState({
+    baseUrl: "",
+    apiKey: "",
+  });
+
+  React.useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      const s = await getSettings();
+      if (mounted) setSettings(s);
+    };
+    load();
+
+    const handleChange: Parameters<
+      typeof chrome.storage.onChanged.addListener
+    >[0] = (changes, area) => {
+      if (area !== "sync") return;
+      setSettings((prev) => ({
+        baseUrl: changes.baseUrl
+          ? changes.baseUrl.newValue || ""
+          : prev.baseUrl,
+        apiKey: changes.apiKey ? changes.apiKey.newValue || "" : prev.apiKey,
+      }));
+    };
+
+    chrome.storage.onChanged.addListener(handleChange);
+    return () => {
+      mounted = false;
+      chrome.storage.onChanged.removeListener(handleChange);
+    };
+  }, []);
+
+  return settings;
+}
+
 export default function App() {
   const tab = useCurrentTab();
-  const [status, setStatus] = React.useState("");
-  const [active, setActive] = React.useState<"quick" | "upload" | "notes">(
+  const settings = useSettings();
+  const connected = Boolean(settings.baseUrl && settings.apiKey);
+  const [status, setStatus] = React.useState({
+    tone: "muted",
+    message: "",
+  });
+  const [active, setActive] = React.useState<"quick" | "notes" | "upload">(
     "quick",
   );
 
+  const setMessage = (tone: "muted" | "success" | "error", message: string) =>
+    setStatus({ tone, message });
+
+  const openOptions = () => chrome.runtime.openOptionsPage();
+
   return (
-    <div className="tabs">
-      <div className="tabbar">
-        <button
-          className="tabbtn"
-          aria-selected={active === "quick"}
-          onClick={() => setActive("quick")}
-        >
-          Quick
-        </button>
-        <button
-          className="tabbtn"
-          aria-selected={active === "upload"}
-          onClick={() => setActive("upload")}
-        >
-          Upload
-        </button>
-        <button
-          className="tabbtn"
-          aria-selected={active === "notes"}
-          onClick={() => setActive("notes")}
-        >
-          Notes
-        </button>
-      </div>
+    <div className="popup">
+      {!connected ? (
+        <section className="card card-cta">
+          <h2>Connect your Swush</h2>
+          <p>
+            Add your base URL, then approve access on your Swush account to
+            issue an API key.
+          </p>
+          <button className="primary" onClick={openOptions}>
+            Open connection settings
+          </button>
+        </section>
+      ) : (
+        <>
+          <div className="tabbar">
+            <button
+              className="tabbtn"
+              aria-selected={active === "quick"}
+              onClick={() => setActive("quick")}
+            >
+              Quick
+            </button>
+            <button
+              className="tabbtn"
+              aria-selected={active === "notes"}
+              onClick={() => setActive("notes")}
+            >
+              Notes
+            </button>
+            <button
+              className="tabbtn"
+              aria-selected={active === "upload"}
+              onClick={() => setActive("upload")}
+            >
+              Upload
+            </button>
+          </div>
 
-      {active === "quick" && (
-        <Quick
-          tabUrl={tab.url || ""}
-          tabTitle={tab.title || ""}
-          onDone={setStatus}
-        />
-      )}
-      {active === "upload" && <Upload onDone={setStatus} />}
-      {active === "notes" && (
-        <Notes tabUrl={tab.url || ""} onDone={setStatus} />
+          {active === "quick" && (
+            <section className="card">
+              <div className="card-header">
+                <div>
+                  <h2>Quick actions</h2>
+                  <p>Save the current page or shorten a link fast.</p>
+                </div>
+              </div>
+              <Quick
+                tabUrl={tab.url || ""}
+                tabTitle={tab.title || ""}
+                baseUrl={settings.baseUrl}
+                onDone={setMessage}
+              />
+            </section>
+          )}
+
+          {active === "notes" && (
+            <section className="card">
+              <div className="card-header">
+                <div>
+                  <h2>Notes</h2>
+                  <p>Capture ideas with a source link attached.</p>
+                </div>
+              </div>
+              <Notes tabUrl={tab.url || ""} onDone={setMessage} />
+            </section>
+          )}
+
+          {active === "upload" && (
+            <section className="card">
+              <div className="card-header">
+                <div>
+                  <h2>Upload</h2>
+                  <p>Send a file or image to your Swush vault.</p>
+                </div>
+              </div>
+              <Upload baseUrl={settings.baseUrl} onDone={setMessage} />
+            </section>
+          )}
+        </>
       )}
 
-      <div className="status">{status}</div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          fontSize: 12,
-          color: "#9ca3af",
-        }}
-      >
-        <a
-          href="options.html"
-          target="_blank"
-          style={{ color: "#6d28d9", textDecoration: "none" }}
-        >
+      <div className={`status status-${status.tone}`}>{status.message}</div>
+      <footer className="popup-footer">
+        <button className="link" onClick={openOptions}>
           Settings
-        </a>
+        </button>
         <span>Swush ♥</span>
-      </div>
+      </footer>
     </div>
   );
 }
@@ -99,105 +179,143 @@ function Quick({
   tabUrl,
   tabTitle,
   onDone,
+  baseUrl,
 }: {
   tabUrl: string;
   tabTitle: string;
-  onDone: (s: string) => void;
+  baseUrl: string;
+  onDone: (tone: "muted" | "success" | "error", s: string) => void;
 }) {
   const [url, setUrl] = React.useState(tabUrl);
   const [title, setTitle] = React.useState(tabTitle);
 
   const doBookmark = async () => {
-    onDone("");
+    onDone("muted", "");
     try {
-      await addBookmark(url || tabUrl, title || tabTitle);
-      onDone("Bookmark added ✓");
+      const finalUrl = url || tabUrl;
+      if (!finalUrl) throw new Error("Enter a URL");
+      await addBookmark(finalUrl, title || tabTitle);
+      onDone("success", "Bookmark added ✓");
     } catch (e: any) {
-      onDone("Error: " + e.message);
+      onDone("error", `Error: ${e.message}`);
     }
   };
   const doShorten = async () => {
-    onDone("");
+    onDone("muted", "");
     try {
-      const r = await shortenLink(url || tabUrl);
+      const finalUrl = url || tabUrl;
+      if (!finalUrl) throw new Error("Enter a URL");
+      const r = await shortenLink(finalUrl);
       const slug = r?.slug || r?.short || "";
-      onDone("Short link created ✓");
+      const shortUrl =
+        r?.shortUrl ||
+        r?.url ||
+        (slug ? `${baseUrl.replace(/\/+$/, "")}/x/${slug}` : "");
+      onDone(
+        "success",
+        shortUrl ? `Short link copied ✓` : "Short link created ✓",
+      );
+      if (shortUrl && navigator.clipboard) {
+        try {
+          await navigator.clipboard.writeText(shortUrl);
+        } catch {
+          // ignore clipboard errors
+        }
+      }
     } catch (e: any) {
-      onDone("Error: " + e.message);
+      onDone("error", `Error: ${e.message}`);
     }
   };
 
   return (
-    <div className="card">
-      <div className="label">URL</div>
-      <input
-        type="url"
-        value={url}
-        onChange={(e) => setUrl(e.target.value)}
-        placeholder="https://..."
-      />
-      <div className="label" style={{ marginTop: 8 }}>
-        Title
-      </div>
-      <input
-        type="text"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder="Optional"
-      />
-      <div className="grid2" style={{ marginTop: 8 }}>
+    <div className="stack">
+      <label className="field">
+        <span>URL</span>
+        <input
+          type="url"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://..."
+        />
+      </label>
+      <label className="field">
+        <span>Title</span>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Optional"
+        />
+      </label>
+      <div className="grid2">
         <button className="primary" onClick={doBookmark}>
-          Add Bookmark
+          Save bookmark
         </button>
-        <button onClick={doShorten}>Shorten</button>
+        <button className="secondary" onClick={doShorten}>
+          Shorten link
+        </button>
       </div>
     </div>
   );
 }
 
-function Upload({ onDone }: { onDone: (s: string) => void }) {
+function Upload({
+  onDone,
+  baseUrl,
+}: {
+  onDone: (tone: "muted" | "success" | "error", s: string) => void;
+  baseUrl: string;
+}) {
   const [file, setFile] = React.useState<File | null>(null);
   const [isPublic, setIsPublic] = React.useState(true);
 
   const doUpload = async () => {
-    onDone("");
+    onDone("muted", "");
     try {
       if (!file) throw new Error("Choose a file");
       const r = await uploadFileBlob(file, file.name, isPublic);
-      const url = r?.slug ? `/x/${r.slug}` : r?.url || "";
-      onDone(`Uploaded ✓ ${url}`);
+      const url = r?.slug
+        ? `${baseUrl.replace(/\/+$/, "")}/x/${r.slug}`
+        : r?.url || "";
+      if (url && navigator.clipboard) {
+        try {
+          await navigator.clipboard.writeText(url);
+        } catch {
+          // ignore clipboard errors
+        }
+      }
+      onDone("success", url ? "Upload complete ✓ Link copied" : "Uploaded ✓");
     } catch (e: any) {
-      onDone("Error: " + e.message);
+      onDone("error", `Error: ${e.message}`);
     }
   };
 
   return (
-    <div className="card">
-      <input
-        type="file"
-        onChange={(e) => setFile(e.target.files?.[0] || null)}
-      />
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          margin: "8px 0",
-        }}
-      >
-        <div
-          className="switch"
-          data-on={isPublic}
+    <div className="stack">
+      <label className="field">
+        <span>File</span>
+        <input
+          type="file"
+          onChange={(e) => setFile(e.target.files?.[0] || null)}
+        />
+      </label>
+      <div className="inline">
+        <button
+          type="button"
+          className={`toggle ${isPublic ? "toggle-on" : ""}`}
           onClick={() => setIsPublic(!isPublic)}
         >
-          <div className="knob"></div>
-        </div>
-        <div className="label" style={{ fontWeight: 500 }}>
-          Public
+          <span className="toggle-knob" />
+        </button>
+        <div>
+          <div className="label">Public link</div>
+          <div className="helper">
+            {isPublic ? "Visible via a share link." : "Private to you."}
+          </div>
         </div>
       </div>
       <button className="primary" onClick={doUpload}>
-        Upload
+        Upload to Swush
       </button>
     </div>
   );
@@ -208,9 +326,10 @@ function Notes({
   onDone,
 }: {
   tabUrl: string;
-  onDone: (s: string) => void;
+  onDone: (tone: "muted" | "success" | "error", s: string) => void;
 }) {
   const [content, setContent] = React.useState("");
+  const [title, setTitle] = React.useState("");
 
   const useSelection = async () => {
     const [tab] = await chrome.tabs.query({
@@ -224,24 +343,42 @@ function Notes({
     setContent((c) => (c ? `${c}\n${sel}` : sel));
   };
   const save = async () => {
-    onDone("");
+    onDone("muted", "");
     try {
-      await addNote(content, tabUrl || null);
+      if (!content.trim()) throw new Error("Write a note first");
+      await addNote(content, tabUrl || null, title || null);
       setContent("");
-      onDone("Note added ✓");
+      setTitle("");
+      onDone("success", "Note added ✓");
     } catch (e: any) {
-      onDone("Error: " + e.message);
+      onDone("error", `Error: ${e.message}`);
     }
   };
 
   return (
-    <div className="card">
-      <div className="label">Content</div>
-      <textarea value={content} onChange={(e) => setContent(e.target.value)} />
-      <div className="grid2" style={{ marginTop: 8 }}>
-        <button onClick={useSelection}>Use selection</button>
+    <div className="stack">
+      <label className="field">
+        <span>Title</span>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Optional"
+        />
+      </label>
+      <label className="field">
+        <span>Content</span>
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder="Drop your note here..."
+        />
+      </label>
+      <div className="grid2">
+        <button className="secondary" onClick={useSelection}>
+          Use selection
+        </button>
         <button className="primary" onClick={save}>
-          Save Note
+          Save note
         </button>
       </div>
     </div>

@@ -17,6 +17,15 @@
 
 import { getSettings } from "./storage";
 
+const DEFAULT_ENDPOINTS = {
+  bookmarks: "/api/v1/bookmarks",
+  notes: "/api/v1/notes",
+  files: "/api/v1/upload",
+  shorten: "/api/v1/shorten",
+  deviceAuthorize: "/api/v1/auth/device/authorize",
+  deviceToken: "/api/v1/auth/device/token",
+};
+
 function join(base: string, seg: string) {
   return `${base}${seg.startsWith("/") ? seg : `/${seg}`}`;
 }
@@ -42,22 +51,44 @@ function deriveTitle(text: string): string {
   return candidate.length > 80 ? candidate.slice(0, 77) + "…" : candidate;
 }
 
-async function auth() {
-  const { token } = await getSettings();
-  if (!token) throw new Error("Missing API token (open Options and save it).");
-  return { Authorization: `Bearer ${token}` };
+async function authHeaders() {
+  const { apiKey } = await getSettings();
+  if (!apiKey) throw new Error("Missing API key (connect in Options).");
+  return { "x-api-key": apiKey };
+}
+
+async function getBaseUrl() {
+  const { baseUrl } = await getSettings();
+  if (!baseUrl) throw new Error("Missing Base URL (set it in Options).");
+  return baseUrl;
+}
+
+async function requestJson<T>(input: RequestInfo, init: RequestInit) {
+  const response = await fetch(input, init);
+  let payload: any = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+  if (!response.ok) {
+    const message =
+      payload?.error_description ||
+      payload?.error ||
+      payload?.message ||
+      `Request failed: ${response.status}`;
+    throw new Error(message);
+  }
+  return payload as T;
 }
 
 export async function addBookmark(url: string, title?: string) {
-  const s = await getSettings();
-  const ep = s.endpoints?.bookmarks || "/api/bookmarks";
-  const r = await fetch(join(s.baseUrl, ep), {
+  const baseUrl = await getBaseUrl();
+  return requestJson(join(baseUrl, DEFAULT_ENDPOINTS.bookmarks), {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(await auth()) },
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
     body: JSON.stringify({ url, title, isFavorite: false }),
   });
-  if (!r.ok) throw new Error(`Bookmark failed: ${r.status}`);
-  return r.json().catch(() => ({}));
 }
 
 export async function addNote(
@@ -65,43 +96,35 @@ export async function addNote(
   sourceUrl?: string | null,
   title?: string | null,
 ) {
-  const s = await getSettings();
-  const ep = s.endpoints?.notes || "/api/notes";
-
   const safeContent = (content ?? "").toString();
   const finalTitle = (title ?? deriveTitle(safeContent)).trim() || "Note";
 
-  const r = await fetch(join(s.baseUrl, ep), {
+  const baseUrl = await getBaseUrl();
+  return requestJson(join(baseUrl, DEFAULT_ENDPOINTS.notes), {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(await auth()) },
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
     body: JSON.stringify({
       title: finalTitle,
       content: safeContent,
       sourceUrl: sourceUrl ?? null,
     }),
   });
-  if (!r.ok) throw new Error(`Note failed: ${r.status}`);
-  return r.json().catch(() => ({}));
 }
 
 export async function shortenLink(rawUrl: string) {
-  const s = await getSettings();
-  const ep = s.endpoints?.shorten || "/api/shorten";
-
   const normalized = normalizeUrl(rawUrl);
   if (!normalized) throw new Error("Invalid URL");
 
-  const r = await fetch(join(s.baseUrl, ep), {
+  const baseUrl = await getBaseUrl();
+  return requestJson(join(baseUrl, DEFAULT_ENDPOINTS.shorten), {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(await auth()) },
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
     body: JSON.stringify({
       originalUrl: normalized,
       url: normalized,
       isPublic: true,
     }),
   });
-  if (!r.ok) throw new Error(`Shorten failed: ${r.status}`);
-  return r.json().catch(() => ({}));
 }
 
 export async function uploadFileBlob(
@@ -109,8 +132,6 @@ export async function uploadFileBlob(
   name?: string,
   isPublic = true,
 ) {
-  const s = await getSettings();
-  const ep = s.endpoints?.files || "/api/upload";
   const fd = new FormData();
   fd.append(
     "file",
@@ -119,11 +140,60 @@ export async function uploadFileBlob(
   fd.append("isPublic", String(isPublic));
   if (name) fd.append("name", name);
 
-  const r = await fetch(join(s.baseUrl, ep), {
+  const baseUrl = await getBaseUrl();
+  return requestJson(join(baseUrl, DEFAULT_ENDPOINTS.files), {
     method: "POST",
-    headers: { ...(await auth()) },
+    headers: { ...(await authHeaders()) },
     body: fd,
   });
-  if (!r.ok) throw new Error(`Upload failed: ${r.status}`);
-  return r.json().catch(() => ({}));
+}
+
+export async function startDeviceFlow(baseUrl: string, extensionId: string) {
+  return requestJson<{
+    device_code: string;
+    user_code: string;
+    verification_uri: string;
+    verification_uri_complete: string;
+    expires_in: number;
+    interval: number;
+  }>(join(baseUrl, DEFAULT_ENDPOINTS.deviceAuthorize), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ extension_id: extensionId }),
+  });
+}
+
+export async function pollDeviceToken(baseUrl: string, deviceCode: string) {
+  const response = await fetch(join(baseUrl, DEFAULT_ENDPOINTS.deviceToken), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ device_code: deviceCode }),
+  });
+
+  let payload: any = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: payload?.error || "request_failed",
+      error_description:
+        payload?.error_description || payload?.message || "Request failed",
+      interval: payload?.interval,
+    } as const;
+  }
+
+  return {
+    ok: true,
+    data: payload as {
+      token_type: string;
+      api_key: string;
+      expires_in: number;
+      interval?: number;
+    },
+  } as const;
 }

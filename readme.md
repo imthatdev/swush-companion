@@ -28,17 +28,17 @@ The official browser extension for [Swush](https://iconical.dev/web/swush) - you
 
 ---
 
-## ⚙️ Setup & Login
+## ⚙️ Setup & Login (Device Flow)
 1. **Open the Options page** of the extension.
 2. **Enter your Swush instance URL** (e.g. `https://your-app.com`).
-3. **Click "Login with Swush"**. This will open a new tab to authenticate with your Swush account.
-   - After login, the extension will automatically receive and save your API token.
-4. (Optional) Adjust API endpoints if your instance uses custom paths.
+3. **Click "Connect"** to start the device flow.
+4. A new tab opens in Swush. **Approve the device** by entering the code shown in the extension.
+5. The extension polls and **saves a fresh API key** automatically.
 
 ---
 
 ## 🛡️ Permissions
-- `storage` – Saves your settings (token, base URL, endpoints)
+- `storage` – Saves your settings (API key + base URL)
 - `activeTab` – Grabs current tab info for saving links/bookmarks
 - `scripting` – Context menu integration
 - `notifications` – Shows success/error messages
@@ -60,8 +60,8 @@ The official browser extension for [Swush](https://iconical.dev/web/swush) - you
 				-Add note
 				-Upload file/image
 - Options Page
-		- Configure your Swush instance URL, login, and endpoints.
-		- View credits and support links.
+		- Configure your Swush instance URL and connect via device flow.
+		- (Optional) Paste an API key manually.
 
 ---
 
@@ -89,14 +89,14 @@ The official browser extension for [Swush](https://iconical.dev/web/swush) - you
 
 ## 🐞 Troubleshooting
 
-### Login/Redirect Issues
+### Device Flow Issues
 
-- If you see "Extension redirect URL not available" or the login button does nothing:
-   - Make sure you are running the built extension as a real browser extension (not in dev server or as a plain HTML file).
-   - The `chrome.identity` API is only available in the extension context.
-   - Build the extension (`npm run build`) and load the `dist` folder in your browser's extension manager.
-   - The options page must be opened from the extension, not as a standalone file or dev server.
-   - The debug section in the options page will show the current redirect URL or a warning if unavailable.
+- If the approval page does not open:
+   - Make sure popups are allowed for the extension.
+- If the code expires:
+   - Click **Connect** again to generate a fresh device code.
+- If the extension can't connect:
+   - Verify the base URL is correct and reachable.
 
 If you still have issues, check your browser's extension permissions and console for errors, or open an issue on GitHub.
 
