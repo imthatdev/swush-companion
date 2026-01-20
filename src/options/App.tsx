@@ -53,8 +53,7 @@ export default function OptionsApp() {
   const setMessage = (tone: Tone, message: string) =>
     setStatus({ tone, message });
 
-  const normalizeBaseUrl = (value: string) =>
-    value.trim().replace(/\/+$/, "");
+  const normalizeBaseUrl = (value: string) => value.trim().replace(/\/+$/, "");
 
   async function startConnect() {
     const normalized = normalizeBaseUrl(baseUrl);
@@ -122,10 +121,7 @@ export default function OptionsApp() {
         }
 
         setPolling(false);
-        setMessage(
-          "error",
-          result.error_description || "Device flow failed.",
-        );
+        setMessage("error", result.error_description || "Device flow failed.");
       } catch (e: any) {
         setPolling(false);
         setMessage("error", e.message || "Device flow failed.");
@@ -221,7 +217,9 @@ export default function OptionsApp() {
               <div className="code">{flow.userCode}</div>
               <button
                 className="secondary"
-                onClick={() => window.open(flow.verificationUriComplete, "_blank")}
+                onClick={() =>
+                  window.open(flow.verificationUriComplete, "_blank")
+                }
               >
                 Open verification page
               </button>
@@ -271,9 +269,16 @@ export default function OptionsApp() {
       <div className={`status status-${status.tone}`}>{status.message}</div>
 
       <section className="card credits">
-        <h3>Made with care by Iconical</h3>
+        <h3>Made with 💜 by Iconical</h3>
         <p>Thanks for using Swush.</p>
         <div className="socials">
+          <a
+            href="https://iconical.dev/sponsor"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Sponsor
+          </a>
           <a href="https://x.com/imthatdevy" target="_blank" rel="noreferrer">
             X / @imthatdevy
           </a>

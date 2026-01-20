@@ -25,7 +25,7 @@ const manifest = {
   name: "Swush Companion",
   description:
     "Shorten links, upload files/images, add notes/bookmarks to Swush.",
-  version: "2.1.0",
+  version: "2.1.1",
   action: { default_title: "Swush", default_popup: "src/popup.html" },
   options_page: "src/options.html",
   background: { service_worker: "src/background.ts", type: "module" },

@@ -276,6 +276,17 @@ button.link {
   padding: 0;
 }
 
+.link {
+  color: var(--brand);
+  text-decoration: none;
+}
+
+.popup-footer-links {
+  display: inline-flex;
+  gap: 12px;
+  align-items: center;
+}
+
 .helper {
   color: var(--muted);
   font-size: 12px;

@@ -166,9 +166,19 @@ export default function App() {
 
       <div className={`status status-${status.tone}`}>{status.message}</div>
       <footer className="popup-footer">
-        <button className="link" onClick={openOptions}>
-          Settings
-        </button>
+        <div className="popup-footer-links">
+          <button className="link" onClick={openOptions}>
+            Settings
+          </button>
+          <a
+            className="link"
+            href="https://iconical.dev/sponsor"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Sponsor
+          </a>
+        </div>
         <span>Swush ♥</span>
       </footer>
     </div>
