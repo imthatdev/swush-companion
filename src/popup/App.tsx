@@ -18,6 +18,8 @@
 import * as React from "react";
 import { addBookmark, addNote, shortenLink, uploadFileBlob } from "../lib/api";
 import { getSettings } from "../lib/storage";
+import { fetchTags, ensureTags } from "../lib/tag-api";
+import { TagInput } from "../components/TagInput";
 
 function useCurrentTab() {
   const [tab, setTab] = React.useState<{ url?: string; title?: string }>({});
@@ -48,10 +50,14 @@ function useSettings() {
     >[0] = (changes, area) => {
       if (area !== "sync") return;
       setSettings((prev) => ({
-        baseUrl: changes.baseUrl
-          ? changes.baseUrl.newValue || ""
-          : prev.baseUrl,
-        apiKey: changes.apiKey ? changes.apiKey.newValue || "" : prev.apiKey,
+        baseUrl:
+          changes.baseUrl && typeof changes.baseUrl.newValue === "string"
+            ? changes.baseUrl.newValue
+            : prev.baseUrl,
+        apiKey:
+          changes.apiKey && typeof changes.apiKey.newValue === "string"
+            ? changes.apiKey.newValue
+            : prev.apiKey,
       }));
     };
 
@@ -73,9 +79,9 @@ export default function App() {
     tone: "muted",
     message: "",
   });
-  const [active, setActive] = React.useState<"quick" | "notes" | "upload">(
-    "quick",
-  );
+  const [active, setActive] = React.useState<
+    "bookmark" | "shorten" | "notes" | "upload"
+  >("bookmark");
 
   const setMessage = (tone: "muted" | "success" | "error", message: string) =>
     setStatus({ tone, message });
@@ -100,10 +106,17 @@ export default function App() {
           <div className="tabbar">
             <button
               className="tabbtn"
-              aria-selected={active === "quick"}
-              onClick={() => setActive("quick")}
+              aria-selected={active === "bookmark"}
+              onClick={() => setActive("bookmark")}
             >
-              Quick
+              Bookmark
+            </button>
+            <button
+              className="tabbtn"
+              aria-selected={active === "shorten"}
+              onClick={() => setActive("shorten")}
+            >
+              Shorten
             </button>
             <button
               className="tabbtn"
@@ -121,20 +134,31 @@ export default function App() {
             </button>
           </div>
 
-          {active === "quick" && (
+          {active === "bookmark" && (
             <section className="card">
               <div className="card-header">
                 <div>
-                  <h2>Quick actions</h2>
-                  <p>Save the current page or shorten a link fast.</p>
+                  <h2>Bookmark</h2>
+                  <p>Save the current page or a link.</p>
                 </div>
               </div>
-              <Quick
+              <Bookmarks
                 tabUrl={tab.url || ""}
                 tabTitle={tab.title || ""}
-                baseUrl={settings.baseUrl}
                 onDone={setMessage}
               />
+            </section>
+          )}
+
+          {active === "shorten" && (
+            <section className="card">
+              <div className="card-header">
+                <div>
+                  <h2>Shorten</h2>
+                  <p>Create a short link quickly.</p>
+                </div>
+              </div>
+              <ShortLinks tabUrl={tab.url || ""} onDone={setMessage} />
             </section>
           )}
 
@@ -185,42 +209,135 @@ export default function App() {
   );
 }
 
-function Quick({
+function Bookmarks({
   tabUrl,
   tabTitle,
   onDone,
-  baseUrl,
 }: {
   tabUrl: string;
   tabTitle: string;
-  baseUrl: string;
   onDone: (tone: "muted" | "success" | "error", s: string) => void;
 }) {
   const [url, setUrl] = React.useState(tabUrl);
   const [title, setTitle] = React.useState(tabTitle);
+  const [tags, setTags] = React.useState<string[]>([]);
+  const [tagSuggestions, setTagSuggestions] = React.useState<string[]>([]);
+  const [bookmarkPublic, setBookmarkPublic] = React.useState(false);
+
+  React.useEffect(() => {
+    fetchTags("bookmark")
+      .then(setTagSuggestions)
+      .catch(() => setTagSuggestions([]));
+  }, []);
 
   const doBookmark = async () => {
     onDone("muted", "");
     try {
       const finalUrl = url || tabUrl;
       if (!finalUrl) throw new Error("Enter a URL");
-      await addBookmark(finalUrl, title || tabTitle);
+      let tagList: string[] = [];
+      if (tags.length) {
+        tagList = await ensureTags("bookmark", tags);
+      }
+      await addBookmark(finalUrl, title || tabTitle, tagList, {
+        isPublic: bookmarkPublic,
+      });
       onDone("success", "Bookmark added ✓");
     } catch (e: any) {
       onDone("error", `Error: ${e.message}`);
     }
   };
+
+  return (
+    <div className="stack">
+      <label className="field">
+        <span>URL</span>
+        <input
+          type="url"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://..."
+        />
+      </label>
+      <label className="field">
+        <span>Title</span>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Optional"
+        />
+      </label>
+      <label className="field">
+        <span>Tags</span>
+        <TagInput
+          value={tags}
+          onChange={setTags}
+          suggestions={tagSuggestions}
+          placeholder="Add tag"
+        />
+      </label>
+      <div className="inline">
+        <button
+          type="button"
+          className={`toggle ${bookmarkPublic ? "toggle-on" : ""}`}
+          onClick={() => setBookmarkPublic(!bookmarkPublic)}
+        >
+          <span className="toggle-knob" />
+        </button>
+        <div>
+          <div className="label">Bookmark public</div>
+          <div className="helper">
+            {bookmarkPublic ? "Visible on your profile." : "Private to you."}
+          </div>
+        </div>
+      </div>
+      <div className="grid2">
+        <button className="primary" onClick={doBookmark}>
+          Save bookmark
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ShortLinks({
+  tabUrl,
+  onDone,
+}: {
+  tabUrl: string;
+  onDone: (tone: "muted" | "success" | "error", s: string) => void;
+}) {
+  const [url, setUrl] = React.useState(tabUrl);
+  const [isPublic, setIsPublic] = React.useState(true);
+
+  type ShortenLinkResponse = {
+    slug?: string;
+    short?: string;
+    shortUrl?: string;
+    url?: string;
+    data?: {
+      slug?: string;
+      short?: string;
+      shortUrl?: string;
+      url?: string;
+    };
+  };
+
   const doShorten = async () => {
     onDone("muted", "");
     try {
       const finalUrl = url || tabUrl;
       if (!finalUrl) throw new Error("Enter a URL");
-      const r = await shortenLink(finalUrl);
-      const slug = r?.slug || r?.short || "";
+      const r = (await shortenLink(finalUrl, {
+        isPublic,
+      })) as ShortenLinkResponse;
       const shortUrl =
+        r?.data?.shortUrl ||
+        r?.data?.url ||
         r?.shortUrl ||
         r?.url ||
-        (slug ? `${baseUrl.replace(/\/+$/, "")}/x/${slug}` : "");
+        "";
       onDone(
         "success",
         shortUrl ? `Short link copied ✓` : "Short link created ✓",
@@ -248,23 +365,24 @@ function Quick({
           placeholder="https://..."
         />
       </label>
-      <label className="field">
-        <span>Title</span>
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Optional"
-        />
-      </label>
-      <div className="grid2">
-        <button className="primary" onClick={doBookmark}>
-          Save bookmark
+      <div className="inline">
+        <button
+          type="button"
+          className={`toggle ${isPublic ? "toggle-on" : ""}`}
+          onClick={() => setIsPublic(!isPublic)}
+        >
+          <span className="toggle-knob" />
         </button>
-        <button className="secondary" onClick={doShorten}>
-          Shorten link
-        </button>
+        <div>
+          <div className="label">Public short link</div>
+          <div className="helper">
+            {isPublic ? "Anyone can access it." : "Private to you."}
+          </div>
+        </div>
       </div>
+      <button className="primary" onClick={doShorten}>
+        Create short link
+      </button>
     </div>
   );
 }
@@ -278,12 +396,34 @@ function Upload({
 }) {
   const [file, setFile] = React.useState<File | null>(null);
   const [isPublic, setIsPublic] = React.useState(true);
+  const [tags, setTags] = React.useState<string[]>([]);
+  const [tagSuggestions, setTagSuggestions] = React.useState<string[]>([]);
+  const [description, setDescription] = React.useState("");
+  const [folderName, setFolderName] = React.useState("");
+
+  React.useEffect(() => {
+    fetchTags("upload")
+      .then(setTagSuggestions)
+      .catch(() => setTagSuggestions([]));
+  }, []);
+
+  type UploadFileBlobResponse = {
+    slug?: string;
+    url?: string;
+  };
 
   const doUpload = async () => {
     onDone("muted", "");
     try {
       if (!file) throw new Error("Choose a file");
-      const r = await uploadFileBlob(file, file.name, isPublic);
+      let tagList: string[] = [];
+      if (tags.length) {
+        tagList = await ensureTags("upload", tags);
+      }
+      const r = (await uploadFileBlob(file, file.name, isPublic, tagList, {
+        description: description.trim() || undefined,
+        folderName: folderName.trim() || undefined,
+      })) as UploadFileBlobResponse;
       const url = r?.slug
         ? `${baseUrl.replace(/\/+$/, "")}/x/${r.slug}`
         : r?.url || "";
@@ -309,6 +449,24 @@ function Upload({
           onChange={(e) => setFile(e.target.files?.[0] || null)}
         />
       </label>
+      <label className="field">
+        <span>Description (optional)</span>
+        <input
+          type="text"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Short description"
+        />
+      </label>
+      <label className="field">
+        <span>Folder (optional)</span>
+        <input
+          type="text"
+          value={folderName}
+          onChange={(e) => setFolderName(e.target.value)}
+          placeholder="e.g. Invoices / 2026"
+        />
+      </label>
       <div className="inline">
         <button
           type="button"
@@ -324,6 +482,15 @@ function Upload({
           </div>
         </div>
       </div>
+      <label className="field">
+        <span>Tags</span>
+        <TagInput
+          value={tags}
+          onChange={setTags}
+          suggestions={tagSuggestions}
+          placeholder="Add tag"
+        />
+      </label>
       <button className="primary" onClick={doUpload}>
         Upload to Swush
       </button>
@@ -340,6 +507,15 @@ function Notes({
 }) {
   const [content, setContent] = React.useState("");
   const [title, setTitle] = React.useState("");
+  const [tags, setTags] = React.useState<string[]>([]);
+  const [tagSuggestions, setTagSuggestions] = React.useState<string[]>([]);
+  const [isPublic, setIsPublic] = React.useState(false);
+
+  React.useEffect(() => {
+    fetchTags("note")
+      .then(setTagSuggestions)
+      .catch(() => setTagSuggestions([]));
+  }, []);
 
   const useSelection = async () => {
     const [tab] = await chrome.tabs.query({
@@ -356,9 +532,16 @@ function Notes({
     onDone("muted", "");
     try {
       if (!content.trim()) throw new Error("Write a note first");
-      await addNote(content, tabUrl || null, title || null);
+      let tagList: string[] = [];
+      if (tags.length) {
+        tagList = await ensureTags("note", tags);
+      }
+      await addNote(content, tabUrl || null, title || null, tagList, {
+        isPublic,
+      });
       setContent("");
       setTitle("");
+      setTags([]);
       onDone("success", "Note added ✓");
     } catch (e: any) {
       onDone("error", `Error: ${e.message}`);
@@ -383,6 +566,30 @@ function Notes({
           placeholder="Drop your note here..."
         />
       </label>
+      <label className="field">
+        <span>Tags</span>
+        <TagInput
+          value={tags}
+          onChange={setTags}
+          suggestions={tagSuggestions}
+          placeholder="Add tag"
+        />
+      </label>
+      <div className="inline">
+        <button
+          type="button"
+          className={`toggle ${isPublic ? "toggle-on" : ""}`}
+          onClick={() => setIsPublic(!isPublic)}
+        >
+          <span className="toggle-knob" />
+        </button>
+        <div>
+          <div className="label">Public note</div>
+          <div className="helper">
+            {isPublic ? "Visible on your profile." : "Private to you."}
+          </div>
+        </div>
+      </div>
       <div className="grid2">
         <button className="secondary" onClick={useSelection}>
           Use selection

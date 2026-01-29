@@ -82,12 +82,29 @@ async function requestJson<T>(input: RequestInfo, init: RequestInit) {
   return payload as T;
 }
 
-export async function addBookmark(url: string, title?: string) {
+export async function addBookmark(
+  url: string,
+  title?: string,
+  tags?: string[],
+  options?: {
+    isPublic?: boolean;
+    maxViews?: number | null;
+    maxViewsAction?: string | null;
+  },
+) {
   const baseUrl = await getBaseUrl();
   return requestJson(join(baseUrl, DEFAULT_ENDPOINTS.bookmarks), {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await authHeaders()) },
-    body: JSON.stringify({ url, title, isFavorite: false }),
+    body: JSON.stringify({
+      url,
+      title,
+      isFavorite: false,
+      tags,
+      isPublic: options?.isPublic,
+      maxViews: options?.maxViews ?? null,
+      maxViewsAction: options?.maxViewsAction ?? null,
+    }),
   });
 }
 
@@ -95,6 +112,12 @@ export async function addNote(
   content: string,
   sourceUrl?: string | null,
   title?: string | null,
+  tags?: string[],
+  options?: {
+    isPublic?: boolean;
+    maxViews?: number | null;
+    maxViewsAction?: string | null;
+  },
 ) {
   const safeContent = (content ?? "").toString();
   const finalTitle = (title ?? deriveTitle(safeContent)).trim() || "Note";
@@ -107,11 +130,23 @@ export async function addNote(
       title: finalTitle,
       content: safeContent,
       sourceUrl: sourceUrl ?? null,
+      tags,
+      isPublic: options?.isPublic,
+      maxViews: options?.maxViews ?? null,
+      maxViewsAction: options?.maxViewsAction ?? null,
     }),
   });
 }
 
-export async function shortenLink(rawUrl: string) {
+export async function shortenLink(
+  rawUrl: string,
+  options?: {
+    isPublic?: boolean;
+    maxClicks?: number | null;
+    maxViewsAction?: string | null;
+    slug?: string | null;
+  },
+) {
   const normalized = normalizeUrl(rawUrl);
   if (!normalized) throw new Error("Invalid URL");
 
@@ -122,7 +157,10 @@ export async function shortenLink(rawUrl: string) {
     body: JSON.stringify({
       originalUrl: normalized,
       url: normalized,
-      isPublic: true,
+      isPublic: options?.isPublic ?? true,
+      maxClicks: options?.maxClicks ?? null,
+      maxViewsAction: options?.maxViewsAction ?? null,
+      slug: options?.slug ?? null,
     }),
   });
 }
@@ -131,6 +169,13 @@ export async function uploadFileBlob(
   file: File | Blob,
   name?: string,
   isPublic = true,
+  tags?: string[],
+  options?: {
+    description?: string;
+    folderName?: string;
+    maxViews?: number | null;
+    maxViewsAction?: string | null;
+  },
 ) {
   const fd = new FormData();
   fd.append(
@@ -139,6 +184,13 @@ export async function uploadFileBlob(
   );
   fd.append("isPublic", String(isPublic));
   if (name) fd.append("name", name);
+  if (options?.description) fd.append("description", options.description);
+  if (options?.folderName) fd.append("folderName", options.folderName);
+  if (typeof options?.maxViews === "number")
+    fd.append("maxViews", String(options.maxViews));
+  if (options?.maxViewsAction)
+    fd.append("maxViewsAction", options.maxViewsAction);
+  if (tags && tags.length) fd.append("newTags", tags.join(","));
 
   const baseUrl = await getBaseUrl();
   return requestJson(join(baseUrl, DEFAULT_ENDPOINTS.files), {
