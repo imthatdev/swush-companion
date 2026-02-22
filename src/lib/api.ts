@@ -21,6 +21,7 @@ const DEFAULT_ENDPOINTS = {
   bookmarks: "/api/v1/bookmarks",
   notes: "/api/v1/notes",
   files: "/api/v1/upload",
+  remoteUpload: "/api/v1/remote-upload",
   shorten: "/api/v1/shorten",
   deviceAuthorize: "/api/v1/auth/device/authorize",
   deviceToken: "/api/v1/auth/device/token",
@@ -65,18 +66,41 @@ async function getBaseUrl() {
 
 async function requestJson<T>(input: RequestInfo, init: RequestInit) {
   const response = await fetch(input, init);
+  const contentType = response.headers.get("content-type") || "";
   let payload: any = null;
+  let textPayload = "";
   try {
-    payload = await response.json();
+    if (contentType.includes("application/json")) {
+      payload = await response.json();
+    } else {
+      textPayload = (await response.text())?.trim?.() || "";
+    }
   } catch {
     payload = null;
   }
   if (!response.ok) {
-    const message =
+    let message =
       payload?.error_description ||
       payload?.error ||
       payload?.message ||
+      textPayload ||
       `Request failed: ${response.status}`;
+
+    if (
+      response.status === 403 &&
+      /bad origin|origin not allowed/i.test(message)
+    ) {
+      message =
+        "Forbidden (origin). Add your extension origin to server CORS/device extension IDs.";
+    }
+
+    if (
+      response.status === 403 &&
+      /feature not enabled for this account/i.test(message)
+    ) {
+      message = "Remote upload is disabled for this account.";
+    }
+
     throw new Error(message);
   }
   return payload as T;
@@ -197,6 +221,23 @@ export async function uploadFileBlob(
     method: "POST",
     headers: { ...(await authHeaders()) },
     body: fd,
+  });
+}
+
+export async function addRemoteUpload(url: string, name?: string) {
+  const normalized = normalizeUrl(url);
+  if (!normalized) throw new Error("Invalid URL");
+
+  const baseUrl = await getBaseUrl();
+  return requestJson(join(baseUrl, DEFAULT_ENDPOINTS.remoteUpload), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify({
+      urls: [normalized],
+      url: normalized,
+      items: [{ url: normalized, name: name || null }],
+      name: name || null,
+    }),
   });
 }
 

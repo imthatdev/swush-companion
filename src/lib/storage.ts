@@ -18,29 +18,46 @@
 export type Settings = {
   baseUrl: string;
   apiKey: string;
+  enableRemoteUploadEmbeddedButton: boolean;
 };
 
-const SETTINGS_KEYS = ["baseUrl", "apiKey"] as const;
+const SETTINGS_KEYS = [
+  "baseUrl",
+  "apiKey",
+  "enableRemoteUploadEmbeddedButton",
+] as const;
 
 export async function getSettings(): Promise<Settings> {
-  const data = await chrome.storage.sync.get([
-    ...SETTINGS_KEYS,
-    "token",
-  ]);
+  const data = await chrome.storage.sync.get([...SETTINGS_KEYS, "token"]);
   const baseUrl = (data.baseUrl || "").replace(/\/+$/, "");
   const apiKey = data.apiKey || data.token || "";
+  const enableRemoteUploadEmbeddedButton =
+    data.enableRemoteUploadEmbeddedButton === true;
   if (data.token && !data.apiKey) {
     await chrome.storage.sync.set({ apiKey });
     await chrome.storage.sync.remove(["token"]);
   }
-  return { baseUrl, apiKey };
+  return { baseUrl, apiKey, enableRemoteUploadEmbeddedButton };
 }
 
-export async function saveSettings(s: Settings) {
-  await chrome.storage.sync.set({
-    baseUrl: s.baseUrl.replace(/\/+$/, ""),
-    apiKey: s.apiKey,
-  });
+export async function saveSettings(s: Partial<Settings>) {
+  const patch: Record<string, unknown> = {};
+
+  if (typeof s.baseUrl === "string") {
+    patch.baseUrl = s.baseUrl.replace(/\/+$/, "");
+  }
+
+  if (typeof s.apiKey === "string") {
+    patch.apiKey = s.apiKey;
+  }
+
+  if (typeof s.enableRemoteUploadEmbeddedButton === "boolean") {
+    patch.enableRemoteUploadEmbeddedButton = s.enableRemoteUploadEmbeddedButton;
+  }
+
+  if (Object.keys(patch).length > 0) {
+    await chrome.storage.sync.set(patch);
+  }
 }
 
 export async function clearSettings() {

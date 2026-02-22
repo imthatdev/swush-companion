@@ -16,10 +16,28 @@
  */
 
 import * as React from "react";
-import { addBookmark, addNote, shortenLink, uploadFileBlob } from "../lib/api";
+import {
+  addBookmark,
+  addNote,
+  shortenLink,
+  uploadFileBlob,
+  addRemoteUpload,
+} from "../lib/api";
 import { getSettings } from "../lib/storage";
 import { fetchTags, ensureTags } from "../lib/tag-api";
 import { TagInput } from "../components/TagInput";
+
+const POPUP_LAST_TAB_KEY = "popupLastActiveTab";
+type PopupTab = "bookmark" | "shorten" | "notes" | "upload";
+
+function isPopupTab(value: unknown): value is PopupTab {
+  return (
+    value === "bookmark" ||
+    value === "shorten" ||
+    value === "notes" ||
+    value === "upload"
+  );
+}
 
 function useCurrentTab() {
   const [tab, setTab] = React.useState<{ url?: string; title?: string }>({});
@@ -79,9 +97,25 @@ export default function App() {
     tone: "muted",
     message: "",
   });
-  const [active, setActive] = React.useState<
-    "bookmark" | "shorten" | "notes" | "upload"
-  >("bookmark");
+  const [active, setActive] = React.useState<PopupTab>("bookmark");
+
+  React.useEffect(() => {
+    chrome.storage.local
+      .get([POPUP_LAST_TAB_KEY])
+      .then((data) => {
+        const saved = data?.[POPUP_LAST_TAB_KEY];
+        if (isPopupTab(saved)) setActive(saved);
+      })
+      .catch(() => {
+        // ignore storage read errors
+      });
+  }, []);
+
+  React.useEffect(() => {
+    chrome.storage.local.set({ [POPUP_LAST_TAB_KEY]: active }).catch(() => {
+      // ignore storage write errors
+    });
+  }, [active]);
 
   const setMessage = (tone: "muted" | "success" | "error", message: string) =>
     setStatus({ tone, message });
@@ -109,7 +143,7 @@ export default function App() {
               aria-selected={active === "bookmark"}
               onClick={() => setActive("bookmark")}
             >
-              Bookmark
+              <span className="tab-label">Bookmark</span>
             </button>
             <button
               className="tabbtn"
@@ -123,7 +157,7 @@ export default function App() {
               aria-selected={active === "notes"}
               onClick={() => setActive("notes")}
             >
-              Notes
+              <span className="tab-label">Notes</span>
             </button>
             <button
               className="tabbtn"
@@ -138,7 +172,9 @@ export default function App() {
             <section className="card">
               <div className="card-header">
                 <div>
-                  <h2>Bookmark</h2>
+                  <h2>
+                    Bookmark <span className="soon-badge">Coming Soon</span>
+                  </h2>
                   <p>Save the current page or a link.</p>
                 </div>
               </div>
@@ -166,7 +202,9 @@ export default function App() {
             <section className="card">
               <div className="card-header">
                 <div>
-                  <h2>Notes</h2>
+                  <h2>
+                    Notes <span className="soon-badge">Coming Soon</span>
+                  </h2>
                   <p>Capture ideas with a source link attached.</p>
                 </div>
               </div>
@@ -223,6 +261,7 @@ function Bookmarks({
   const [tags, setTags] = React.useState<string[]>([]);
   const [tagSuggestions, setTagSuggestions] = React.useState<string[]>([]);
   const [bookmarkPublic, setBookmarkPublic] = React.useState(false);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   React.useEffect(() => {
     fetchTags("bookmark")
@@ -231,6 +270,8 @@ function Bookmarks({
   }, []);
 
   const doBookmark = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     onDone("muted", "");
     try {
       const finalUrl = url || tabUrl;
@@ -245,6 +286,8 @@ function Bookmarks({
       onDone("success", "Bookmark added ✓");
     } catch (e: any) {
       onDone("error", `Error: ${e.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -293,8 +336,13 @@ function Bookmarks({
         </div>
       </div>
       <div className="grid2">
-        <button className="primary" onClick={doBookmark}>
-          Save bookmark
+        <button
+          className="primary"
+          onClick={doBookmark}
+          disabled={isSubmitting}
+          aria-busy={isSubmitting}
+        >
+          {isSubmitting ? "Saving..." : "Save bookmark"}
         </button>
       </div>
     </div>
@@ -310,6 +358,7 @@ function ShortLinks({
 }) {
   const [url, setUrl] = React.useState(tabUrl);
   const [isPublic, setIsPublic] = React.useState(true);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   type ShortenLinkResponse = {
     slug?: string;
@@ -325,6 +374,8 @@ function ShortLinks({
   };
 
   const doShorten = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     onDone("muted", "");
     try {
       const finalUrl = url || tabUrl;
@@ -333,11 +384,7 @@ function ShortLinks({
         isPublic,
       })) as ShortenLinkResponse;
       const shortUrl =
-        r?.data?.shortUrl ||
-        r?.data?.url ||
-        r?.shortUrl ||
-        r?.url ||
-        "";
+        r?.data?.shortUrl || r?.data?.url || r?.shortUrl || r?.url || "";
       onDone(
         "success",
         shortUrl ? `Short link copied ✓` : "Short link created ✓",
@@ -351,6 +398,8 @@ function ShortLinks({
       }
     } catch (e: any) {
       onDone("error", `Error: ${e.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -380,8 +429,13 @@ function ShortLinks({
           </div>
         </div>
       </div>
-      <button className="primary" onClick={doShorten}>
-        Create short link
+      <button
+        className="primary"
+        onClick={doShorten}
+        disabled={isSubmitting}
+        aria-busy={isSubmitting}
+      >
+        {isSubmitting ? "Creating..." : "Create short link"}
       </button>
     </div>
   );
@@ -400,11 +454,67 @@ function Upload({
   const [tagSuggestions, setTagSuggestions] = React.useState<string[]>([]);
   const [description, setDescription] = React.useState("");
   const [folderName, setFolderName] = React.useState("");
+  const [remoteUrl, setRemoteUrl] = React.useState("");
+  const [isUploadingFile, setIsUploadingFile] = React.useState(false);
+  const [isUploadingRemoteUrl, setIsUploadingRemoteUrl] = React.useState(false);
+  const [isPastingRemoteUrl, setIsPastingRemoteUrl] = React.useState(false);
 
   React.useEffect(() => {
     fetchTags("upload")
       .then(setTagSuggestions)
       .catch(() => setTagSuggestions([]));
+  }, []);
+
+  const normalizeClipboardUrl = React.useCallback((input: string) => {
+    const text = (input || "").trim();
+    if (!text) return null;
+
+    try {
+      const candidate = /^https?:\/\//i.test(text) ? text : `https://${text}`;
+      const parsed = new URL(candidate);
+      if (!/^https?:$/i.test(parsed.protocol)) return null;
+      return candidate;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const pasteClipboardIntoRemoteUrl = React.useCallback(
+    async (showMessageOnFailure: boolean) => {
+      if (isPastingRemoteUrl) return;
+      if (!navigator.clipboard?.readText) {
+        if (showMessageOnFailure) {
+          onDone("error", "Clipboard access is not available.");
+        }
+        return;
+      }
+
+      setIsPastingRemoteUrl(true);
+      try {
+        const text = await navigator.clipboard.readText();
+        const normalized = normalizeClipboardUrl(text);
+        if (!normalized) {
+          if (showMessageOnFailure) {
+            onDone("error", "Clipboard does not contain a valid URL.");
+          }
+          return;
+        }
+
+        setRemoteUrl(normalized);
+      } catch {
+        if (showMessageOnFailure) {
+          onDone("error", "Failed to read clipboard.");
+        }
+      } finally {
+        setIsPastingRemoteUrl(false);
+      }
+    },
+    [isPastingRemoteUrl, normalizeClipboardUrl, onDone],
+  );
+
+  React.useEffect(() => {
+    if (remoteUrl.trim()) return;
+    void pasteClipboardIntoRemoteUrl(false);
   }, []);
 
   type UploadFileBlobResponse = {
@@ -413,6 +523,8 @@ function Upload({
   };
 
   const doUpload = async () => {
+    if (isUploadingFile) return;
+    setIsUploadingFile(true);
     onDone("muted", "");
     try {
       if (!file) throw new Error("Choose a file");
@@ -437,6 +549,25 @@ function Upload({
       onDone("success", url ? "Upload complete ✓ Link copied" : "Uploaded ✓");
     } catch (e: any) {
       onDone("error", `Error: ${e.message}`);
+    } finally {
+      setIsUploadingFile(false);
+    }
+  };
+
+  const doRemoteUpload = async () => {
+    if (isUploadingRemoteUrl) return;
+    setIsUploadingRemoteUrl(true);
+    onDone("muted", "");
+    try {
+      const value = remoteUrl.trim();
+      if (!value) throw new Error("Enter a URL");
+      await addRemoteUpload(value);
+      setRemoteUrl("");
+      onDone("success", "Remote upload added ✓");
+    } catch (e: any) {
+      onDone("error", `Error: ${e.message}`);
+    } finally {
+      setIsUploadingRemoteUrl(false);
     }
   };
 
@@ -491,8 +622,42 @@ function Upload({
           placeholder="Add tag"
         />
       </label>
-      <button className="primary" onClick={doUpload}>
-        Upload to Swush
+      <button
+        className="primary"
+        onClick={doUpload}
+        disabled={isUploadingFile}
+        aria-busy={isUploadingFile}
+      >
+        {isUploadingFile ? "Uploading..." : "Upload to Swush"}
+      </button>
+
+      <label className="field">
+        <div className="field-with-action">
+          <span>Remote URL</span>
+          <button
+            type="button"
+            className="secondary tiny-btn"
+            onClick={() => void pasteClipboardIntoRemoteUrl(true)}
+            disabled={isPastingRemoteUrl}
+            aria-busy={isPastingRemoteUrl}
+          >
+            {isPastingRemoteUrl ? "Pasting..." : "Paste"}
+          </button>
+        </div>
+        <input
+          type="url"
+          value={remoteUrl}
+          onChange={(e) => setRemoteUrl(e.target.value)}
+          placeholder="https://..."
+        />
+      </label>
+      <button
+        className="secondary"
+        onClick={doRemoteUpload}
+        disabled={isUploadingRemoteUrl}
+        aria-busy={isUploadingRemoteUrl}
+      >
+        {isUploadingRemoteUrl ? "Adding URL..." : "Add URL to remote upload"}
       </button>
     </div>
   );
@@ -510,6 +675,8 @@ function Notes({
   const [tags, setTags] = React.useState<string[]>([]);
   const [tagSuggestions, setTagSuggestions] = React.useState<string[]>([]);
   const [isPublic, setIsPublic] = React.useState(false);
+  const [isUsingSelection, setIsUsingSelection] = React.useState(false);
+  const [isSaving, setIsSaving] = React.useState(false);
 
   React.useEffect(() => {
     fetchTags("note")
@@ -518,17 +685,25 @@ function Notes({
   }, []);
 
   const useSelection = async () => {
+    if (isUsingSelection) return;
+    setIsUsingSelection(true);
     const [tab] = await chrome.tabs.query({
       active: true,
       currentWindow: true,
     });
-    const [{ result: sel = "" } = {}] = await chrome.scripting.executeScript({
-      target: { tabId: tab.id! },
-      func: () => window.getSelection()?.toString() || "",
-    });
-    setContent((c) => (c ? `${c}\n${sel}` : sel));
+    try {
+      const [{ result: sel = "" } = {}] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id! },
+        func: () => window.getSelection()?.toString() || "",
+      });
+      setContent((c) => (c ? `${c}\n${sel}` : sel));
+    } finally {
+      setIsUsingSelection(false);
+    }
   };
   const save = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
     onDone("muted", "");
     try {
       if (!content.trim()) throw new Error("Write a note first");
@@ -545,6 +720,8 @@ function Notes({
       onDone("success", "Note added ✓");
     } catch (e: any) {
       onDone("error", `Error: ${e.message}`);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -591,11 +768,21 @@ function Notes({
         </div>
       </div>
       <div className="grid2">
-        <button className="secondary" onClick={useSelection}>
-          Use selection
+        <button
+          className="secondary"
+          onClick={useSelection}
+          disabled={isUsingSelection}
+          aria-busy={isUsingSelection}
+        >
+          {isUsingSelection ? "Collecting..." : "Use selection"}
         </button>
-        <button className="primary" onClick={save}>
-          Save note
+        <button
+          className="primary"
+          onClick={save}
+          disabled={isSaving}
+          aria-busy={isSaving}
+        >
+          {isSaving ? "Saving..." : "Save note"}
         </button>
       </div>
     </div>

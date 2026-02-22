@@ -40,8 +40,17 @@ const manifest = {
     "scripting",
     "contextMenus",
     "notifications",
+    "clipboardRead",
+    "clipboardWrite",
   ],
   host_permissions: ["<all_urls>"],
+  content_scripts: [
+    {
+      matches: ["<all_urls>"],
+      js: ["src/content/x-overlay.ts"],
+      run_at: "document_idle",
+    },
+  ],
   commands: {
     "swush-quick-bookmark": {
       suggested_key: { default: "Alt+B" },

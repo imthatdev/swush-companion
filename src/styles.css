@@ -25,7 +25,10 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 14px/1.5 "Space Grotesk", "Segoe UI", sans-serif;
+  font:
+    14px/1.5 "Space Grotesk",
+    "Segoe UI",
+    sans-serif;
 }
 
 .swush-popup {
@@ -55,7 +58,7 @@ body {
   content: none;
 }
 
-.popup > * ,
+.popup > *,
 .options-shell > * {
   position: relative;
   z-index: 1;
@@ -184,6 +187,26 @@ body {
   cursor: pointer;
 }
 
+.tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.soon-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(139, 92, 246, 0.45);
+  background: rgba(139, 92, 246, 0.18);
+  color: #ddd6fe;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
 .tabbtn[aria-selected="true"] {
   background: var(--surface-3);
   border-color: rgba(139, 92, 246, 0.4);
@@ -199,6 +222,20 @@ body {
 .field span {
   color: var(--muted);
   font-weight: 500;
+}
+
+.field-with-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+button.tiny-btn {
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 1;
 }
 
 .tag-input {
@@ -295,7 +332,9 @@ textarea {
   color: var(--text);
   font: inherit;
   outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 select {
@@ -307,7 +346,9 @@ select {
   color: var(--text);
   font: inherit;
   outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 select:focus {
@@ -344,7 +385,10 @@ button {
   color: var(--text);
   font: inherit;
   cursor: pointer;
-  transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.15s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 button:hover {
@@ -360,6 +404,26 @@ button:disabled {
 
 button:disabled:hover {
   border-color: var(--border);
+}
+
+button[aria-busy="true"] {
+  position: relative;
+  pointer-events: none;
+  padding-right: 34px;
+}
+
+button[aria-busy="true"]::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: swush-spin 0.7s linear infinite;
 }
 
 button.primary {
@@ -515,6 +579,12 @@ button.link {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes swush-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 

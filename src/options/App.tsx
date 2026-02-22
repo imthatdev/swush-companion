@@ -24,6 +24,7 @@ type Tone = "muted" | "success" | "error";
 export default function OptionsApp() {
   const [baseUrl, setBaseUrl] = React.useState("");
   const [apiKey, setApiKey] = React.useState("");
+  const [enableEmbeddedButton, setEnableEmbeddedButton] = React.useState(false);
   const [status, setStatus] = React.useState<{ tone: Tone; message: string }>({
     tone: "muted",
     message: "",
@@ -38,6 +39,10 @@ export default function OptionsApp() {
   const [isConnecting, setIsConnecting] = React.useState(false);
   const [polling, setPolling] = React.useState(false);
   const [manualKey, setManualKey] = React.useState("");
+  const [isSavingUrl, setIsSavingUrl] = React.useState(false);
+  const [isSavingManualKey, setIsSavingManualKey] = React.useState(false);
+  const [isDisconnecting, setIsDisconnecting] = React.useState(false);
+  const [isTogglingEmbedded, setIsTogglingEmbedded] = React.useState(false);
 
   React.useEffect(() => {
     (async () => {
@@ -45,6 +50,7 @@ export default function OptionsApp() {
       setBaseUrl(s.baseUrl || "");
       setApiKey(s.apiKey || "");
       setManualKey(s.apiKey || "");
+      setEnableEmbeddedButton(s.enableRemoteUploadEmbeddedButton === true);
     })();
   }, []);
 
@@ -137,38 +143,65 @@ export default function OptionsApp() {
   }, [flow, polling, baseUrl]);
 
   async function saveManualKey() {
+    if (isSavingManualKey) return;
+    setIsSavingManualKey(true);
     const normalized = normalizeBaseUrl(baseUrl);
     if (!normalized) {
       setMessage("error", "Enter your Swush base URL first.");
+      setIsSavingManualKey(false);
       return;
     }
     if (!manualKey.trim()) {
       setMessage("error", "Paste your API key first.");
+      setIsSavingManualKey(false);
       return;
     }
     await saveSettings({ baseUrl: normalized, apiKey: manualKey.trim() });
     setApiKey(manualKey.trim());
     setMessage("success", "API key saved.");
+    setIsSavingManualKey(false);
   }
 
   async function saveBaseUrl() {
+    if (isSavingUrl) return;
+    setIsSavingUrl(true);
     const normalized = normalizeBaseUrl(baseUrl);
     if (!normalized) {
       setMessage("error", "Enter your Swush base URL first.");
+      setIsSavingUrl(false);
       return;
     }
     await saveSettings({ baseUrl: normalized, apiKey });
     setBaseUrl(normalized);
     setMessage("success", "Base URL saved.");
+    setIsSavingUrl(false);
   }
 
   async function disconnect() {
+    if (isDisconnecting) return;
+    setIsDisconnecting(true);
     await clearSettings();
     setApiKey("");
     setManualKey("");
     setFlow(null);
     setPolling(false);
     setMessage("muted", "Disconnected.");
+    setIsDisconnecting(false);
+  }
+
+  async function toggleEmbeddedButton() {
+    if (isTogglingEmbedded) return;
+    setIsTogglingEmbedded(true);
+    const next = !enableEmbeddedButton;
+    setEnableEmbeddedButton(next);
+    await saveSettings({ enableRemoteUploadEmbeddedButton: next });
+    setMessage(
+      "success",
+      next
+        ? "Embedded remote-upload button enabled."
+        : "Embedded remote-upload button disabled.",
+    );
+    setIsTogglingEmbedded(false);
   }
 
   return (
@@ -200,8 +233,13 @@ export default function OptionsApp() {
           />
         </label>
         <div className="inline actions">
-          <button className="secondary" onClick={saveBaseUrl}>
-            Save URL
+          <button
+            className="secondary"
+            onClick={saveBaseUrl}
+            disabled={isSavingUrl}
+            aria-busy={isSavingUrl}
+          >
+            {isSavingUrl ? "Saving..." : "Save URL"}
           </button>
           <div className="helper">Required before connecting.</div>
         </div>
@@ -233,6 +271,7 @@ export default function OptionsApp() {
             <button
               className="primary"
               disabled={isConnecting || polling}
+              aria-busy={isConnecting || polling}
               onClick={startConnect}
             >
               {isConnecting || polling ? "Waiting for approval..." : "Connect"}
@@ -255,14 +294,48 @@ export default function OptionsApp() {
           />
         </label>
         <div className="inline actions">
-          <button className="secondary" onClick={saveManualKey}>
-            Save key
+          <button
+            className="secondary"
+            onClick={saveManualKey}
+            disabled={isSavingManualKey}
+            aria-busy={isSavingManualKey}
+          >
+            {isSavingManualKey ? "Saving..." : "Save key"}
           </button>
           {connected && (
-            <button className="danger" onClick={disconnect}>
-              Disconnect
+            <button
+              className="danger"
+              onClick={disconnect}
+              disabled={isDisconnecting}
+              aria-busy={isDisconnecting}
+            >
+              {isDisconnecting ? "Disconnecting..." : "Disconnect"}
             </button>
           )}
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>Embedded remote upload button</h2>
+        <p>Show an on-page "Upload to Swush" button on supported pages.</p>
+        <div className="inline">
+          <button
+            type="button"
+            className={`toggle ${enableEmbeddedButton ? "toggle-on" : ""}`}
+            onClick={toggleEmbeddedButton}
+            disabled={isTogglingEmbedded}
+            aria-busy={isTogglingEmbedded}
+          >
+            <span className="toggle-knob" />
+          </button>
+          <div>
+            <div className="label">Enable remote upload embedded button</div>
+            <div className="helper">
+              {enableEmbeddedButton
+                ? "Enabled on supported sites."
+                : "Disabled."}
+            </div>
+          </div>
         </div>
       </section>
 
