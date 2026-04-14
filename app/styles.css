@@ -1,3 +1,20 @@
+/*
+ *   Copyright (c) 2026 Laith Alkhaddam aka Iconical.
+ *   All rights reserved.
+ *
+ *   Licensed under the Apache License, Version 2.0 (the "License");
+ *   you may not use this file except in compliance with the License.
+ *   You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *   Unless required by applicable law or agreed to in writing, software
+ *   distributed under the License is distributed on an "AS IS" BASIS,
+ *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *   See the License for the specific language governing permissions and
+ *   limitations under the License.
+ */
+
 :root {
   --bg: #0a0a0a;
   --surface: #141016;
@@ -33,7 +50,7 @@ body {
 
 .swush-popup {
   min-width: 360px;
-  padding: 12px;
+  padding: 0;
 }
 
 .swush-options {
@@ -46,6 +63,10 @@ body {
   flex-direction: column;
   gap: 16px;
   position: relative;
+}
+
+.popup {
+  padding: 12px;
 }
 
 .options-shell {
@@ -175,10 +196,12 @@ body {
   padding: 6px;
   border-radius: 12px;
   border: 1px solid var(--border);
+  overflow-x: auto;
 }
 
 .tabbtn {
-  flex: 1;
+  flex: 0 0 auto;
+  min-width: 90px;
   border-radius: 10px;
   border: 1px solid transparent;
   background: transparent;
@@ -467,6 +490,94 @@ button.link {
   font-size: 12px;
 }
 
+.site-controls {
+  gap: 12px;
+}
+
+.site-current-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.site-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  padding: 4px 10px;
+  margin-top: 4px;
+}
+
+.site-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  max-height: 170px;
+  overflow-y: auto;
+}
+
+.site-controls .field + .site-list,
+.site-controls .field + .helper {
+  margin-top: 8px;
+}
+
+.site-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  padding: 8px 10px;
+}
+
+.site-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.site-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  background: rgba(139, 92, 246, 0.18);
+  color: #ddd6fe;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pref-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.support-links {
+  display: grid;
+  gap: 8px;
+}
+
+.mono {
+  font-family: "Space Grotesk", "SFMono-Regular", Menlo, monospace;
+  font-size: 12px;
+}
+
 .label {
   font-weight: 600;
 }
@@ -594,6 +705,12 @@ button.link {
   }
 
   .inline {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .site-current-row,
+  .pref-row {
     flex-direction: column;
     align-items: flex-start;
   }

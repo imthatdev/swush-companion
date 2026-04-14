@@ -8,6 +8,14 @@ The official browser extension for [Swush](https://iconical.dev/web/swush) - you
 > - Alt + N to capture selected text as a note
 > - Alt + U to instantly upload a file or image.
 
+![Version](https://img.shields.io/github/v/release/imthatdev/swush-companion?style=for-the-badge)
+![Downloads](https://img.shields.io/github/downloads/imthatdev/swush-companion/total?style=for-the-badge)
+![License](https://img.shields.io/github/license/imthatdev/swush-companion?style=for-the-badge)
+![Stars](https://img.shields.io/github/stars/imthatdev/swush-companion?style=for-the-badge)
+
+[![Install Extension](https://img.shields.io/badge/Install-Chrome_Extension-blue?style=for-the-badge&logo=googlechrome)](https://chromewebstore.google.com/detail/swush-companion/jgipkeccibhgdfhoknfggljdmdodkjop)
+[![Install Extension](https://img.shields.io/badge/Install-Firefox_Extension-orange?style=for-the-badge&logo=firefox)](https://addons.mozilla.org/en-US/firefox/addon/swush-companion/)
+
 ---
 
 ## ✨ Features
@@ -29,7 +37,9 @@ The official browser extension for [Swush](https://iconical.dev/web/swush) - you
 ## 🚀 Installation
 1. **Download** or **build** the extension (see Developer Guide below).
 2. **Load** the extension in your browser:
-   - Chrome: Go to `chrome://extensions`, enable Developer Mode, click "Load unpacked", and select the `dist` folder.
+   - Chrome: Go to `chrome://extensions`, enable Developer Mode, click "Load unpacked", and select `/extensions/chrome`.
+	- Firefox: Go to `about:debugging#/runtime/this-firefox`, click "Load Temporary Add-on", and choose `/extensions/firefox/manifest.json`.
+	- Zen (Firefox-based): Use `about:debugging#/runtime/this-firefox` and load `/extensions/firefox/manifest.json` the same way.
 
 ---
 
@@ -45,8 +55,9 @@ The official browser extension for [Swush](https://iconical.dev/web/swush) - you
 If you use the extension with your own Swush app instance, add your extension origin to the app CORS allowlist:
 
 - `chrome-extension://<EXTENSION_ID>`
+- `moz-extension://<EXTENSION_UUID>`
 
-You can find `<EXTENSION_ID>` in `chrome://extensions`.
+You can find `<EXTENSION_ID>` in `chrome://extensions`, and `<EXTENSION_UUID>` in `about:debugging#/runtime/this-firefox`.
 
 If this origin is missing, extension API calls can fail with `403` / `Origin not allowed`.
 
@@ -88,6 +99,9 @@ If this origin is missing, extension API calls can fail with `403` / `Origin not
 
 ## 🛠️ Developer Guide
 - Project Structure
+	- app – Extension source code (formerly src)
+	- extensions/chrome – Generated Chrome package (load unpacked from here)
+	- extensions/firefox – Generated Firefox/Zen package
 	- background.ts – Service worker, context menu, and background logic
 	- popup – Popup UI (React)
 	- options – Options/settings UI (React)
@@ -96,12 +110,18 @@ If this origin is missing, extension API calls can fail with `403` / `Origin not
 	- public – Icons and static assets
 - Scripts
 	- npm run dev – Start development server (Vite)
-	- npm run build – Build extension for production
+	- npm run build – Build base bundle into dist (internal build output)
+	- npm run build:chrome – Generate /extensions/chrome from dist
+	- npm run build:firefox – Generate /extensions/firefox from dist
+	- npm run build:extensions – Generate both /extensions/chrome and /extensions/firefox
 	- npm run zip – Build and zip for release
+	- npm run zip:chrome – Build Chrome package zip
+	- npm run zip:firefox – Build Firefox package zip
+	- npm run zip:extensions – Build both browser zips
 - Build
 	- npm install
-	- npm run build
-	- Load the dist folder as an unpacked extension
+	- npm run build:extensions
+	- Load /extensions/chrome or /extensions/firefox depending on your browser
 - Contributing
 	- PRs welcome! Please build and test before submitting.
 	- Issues and feature requests: GitHub Issues

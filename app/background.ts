@@ -22,14 +22,120 @@ import {
   shortenLink,
   addRemoteUpload,
 } from "./lib/api";
+import { getSettings } from "./lib/storage";
+import {
+  enqueueRemoteUpload,
+  getQueuedRemoteUploads,
+  setQueuedRemoteUploads,
+  type QueuedRemoteUpload,
+} from "./storage/upload-queue";
+
+const REMOTE_UPLOAD_RETRY_ALARM = "swush-remote-upload-retry";
+const MAX_REMOTE_UPLOAD_RETRIES = 5;
+let queueFlushInFlight = false;
 
 chrome.runtime.onInstalled.addListener(() => {
   void createContextMenus();
+  void flushRemoteUploadQueue();
+  scheduleRemoteUploadRetry();
 });
 
 chrome.runtime.onStartup?.addListener(() => {
   void createContextMenus();
+  void flushRemoteUploadQueue();
+  scheduleRemoteUploadRetry();
 });
+
+chrome.alarms?.onAlarm.addListener((alarm) => {
+  if (alarm.name !== REMOTE_UPLOAD_RETRY_ALARM) return;
+  void flushRemoteUploadQueue();
+});
+
+function scheduleRemoteUploadRetry() {
+  chrome.alarms?.create(REMOTE_UPLOAD_RETRY_ALARM, {
+    delayInMinutes: 1,
+    periodInMinutes: 4,
+  });
+}
+
+function isLikelyNetworkError(error: unknown) {
+  const message = String(
+    (error as { message?: string })?.message || "",
+  ).toLowerCase();
+  return (
+    message.includes("failed to fetch") ||
+    message.includes("network") ||
+    message.includes("offline") ||
+    message.includes("temporarily")
+  );
+}
+
+async function ensureConnected() {
+  const settings = await getSettings();
+  return Boolean(settings.baseUrl && settings.apiKey);
+}
+
+async function queueRemoteUpload(url: string, title: string) {
+  await enqueueRemoteUpload(url, title);
+  scheduleRemoteUploadRetry();
+}
+
+async function runRemoteUpload(url: string, title: string) {
+  const connected = await ensureConnected();
+  if (!connected) {
+    throw new Error("Not connected. Open extension settings to sign in.");
+  }
+
+  return addRemoteUpload(url, title);
+}
+
+async function flushRemoteUploadQueue() {
+  if (queueFlushInFlight) return;
+  queueFlushInFlight = true;
+
+  try {
+    const connected = await ensureConnected();
+    if (!connected) return;
+
+    const queue = await getQueuedRemoteUploads();
+    if (queue.length === 0) return;
+
+    const next: QueuedRemoteUpload[] = [];
+
+    for (const item of queue) {
+      try {
+        await addRemoteUpload(item.url, item.title);
+      } catch (error) {
+        if (
+          isLikelyNetworkError(error) &&
+          item.attempts + 1 < MAX_REMOTE_UPLOAD_RETRIES
+        ) {
+          next.push({ ...item, attempts: item.attempts + 1 });
+          continue;
+        }
+
+        if (!isLikelyNetworkError(error)) {
+          notify(
+            "Swush queue item failed: " +
+              String(
+                (error as { message?: string })?.message || "Unknown error",
+              ),
+          );
+        }
+      }
+    }
+
+    await setQueuedRemoteUploads(next);
+
+    if (next.length === 0) {
+      chrome.alarms?.clear(REMOTE_UPLOAD_RETRY_ALARM);
+    } else {
+      scheduleRemoteUploadRetry();
+    }
+  } finally {
+    queueFlushInFlight = false;
+  }
+}
 
 async function createContextMenus() {
   await chrome.contextMenus.removeAll();
@@ -59,6 +165,13 @@ async function createContextMenus() {
     parentId: "swush_root",
     title: "Create short link",
     contexts: ["page", "link"],
+  });
+
+  chrome.contextMenus.create({
+    id: "swush_send_to_swush",
+    parentId: "swush_root",
+    title: "Send to Swush",
+    contexts: ["page", "link", "image", "video"],
   });
 
   chrome.contextMenus.create({
@@ -132,8 +245,32 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         throw new Error("This link does not look like a video/status URL");
       }
 
-      await addRemoteUpload(targetUrl, tab?.title || "Remote video");
-      notify("Added to remote upload");
+      try {
+        await runRemoteUpload(targetUrl, tab?.title || "Remote video");
+        notify("Added to remote upload");
+      } catch (error) {
+        if (isLikelyNetworkError(error)) {
+          await queueRemoteUpload(targetUrl, tab?.title || "Remote video");
+          notify("Offline. Added to queue.");
+        } else {
+          throw error;
+        }
+      }
+    } else if (info.menuItemId === "swush_send_to_swush") {
+      const targetUrl = pickRemoteUploadTargetUrl(info, tab?.url || "");
+      if (!targetUrl) throw new Error("No target URL");
+
+      try {
+        await runRemoteUpload(targetUrl, tab?.title || "Remote upload");
+        notify("Added to remote upload");
+      } catch (error) {
+        if (isLikelyNetworkError(error)) {
+          await queueRemoteUpload(targetUrl, tab?.title || "Remote upload");
+          notify("Offline. Added to queue.");
+        } else {
+          throw error;
+        }
+      }
     }
   } catch (e: any) {
     notify("Swush: " + e.message);
@@ -179,10 +316,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   void (async () => {
     try {
-      await addRemoteUpload(url, title);
+      await runRemoteUpload(url, title);
       notify("Added to remote upload");
-      sendResponse({ ok: true });
+      sendResponse({ ok: true, queued: false });
     } catch (e: any) {
+      if (isLikelyNetworkError(e)) {
+        await queueRemoteUpload(url, title);
+        notify("Offline. Added to queue.");
+        sendResponse({ ok: true, queued: true });
+        return;
+      }
+
       sendResponse({ ok: false, error: e?.message || "Upload failed" });
     }
   })();
@@ -206,7 +350,7 @@ function isLikelyVideoUrl(url: string) {
       const parsed = new URL(url);
       const host = parsed.hostname.toLowerCase();
       const isXHost =
-        host === "x. " ||
+        host === "x.com" ||
         host === "www.x.com" ||
         host.endsWith(".x.com") ||
         host === "twitter.com" ||

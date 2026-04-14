@@ -19,12 +19,24 @@ export type Settings = {
   baseUrl: string;
   apiKey: string;
   enableRemoteUploadEmbeddedButton: boolean;
+  smartUiAdaptation: boolean;
+  floatingFallbackButton: boolean;
+  autoDetectMedia: boolean;
 };
+
+export const ENABLE_REMOTE_UPLOAD_EMBEDDED_BUTTON_KEY =
+  "enableRemoteUploadEmbeddedButton";
+export const SMART_UI_ADAPTATION_KEY = "smartUiAdaptation";
+export const FLOATING_FALLBACK_BUTTON_KEY = "floatingFallbackButton";
+export const AUTO_DETECT_MEDIA_KEY = "autoDetectMedia";
 
 const SETTINGS_KEYS = [
   "baseUrl",
   "apiKey",
-  "enableRemoteUploadEmbeddedButton",
+  ENABLE_REMOTE_UPLOAD_EMBEDDED_BUTTON_KEY,
+  SMART_UI_ADAPTATION_KEY,
+  FLOATING_FALLBACK_BUTTON_KEY,
+  AUTO_DETECT_MEDIA_KEY,
 ] as const;
 
 export async function getSettings(): Promise<Settings> {
@@ -32,12 +44,22 @@ export async function getSettings(): Promise<Settings> {
   const baseUrl = (data.baseUrl || "").replace(/\/+$/, "");
   const apiKey = data.apiKey || data.token || "";
   const enableRemoteUploadEmbeddedButton =
-    data.enableRemoteUploadEmbeddedButton === true;
+    data[ENABLE_REMOTE_UPLOAD_EMBEDDED_BUTTON_KEY] !== false;
+  const smartUiAdaptation = data[SMART_UI_ADAPTATION_KEY] !== false;
+  const floatingFallbackButton = data[FLOATING_FALLBACK_BUTTON_KEY] !== false;
+  const autoDetectMedia = data[AUTO_DETECT_MEDIA_KEY] !== false;
   if (data.token && !data.apiKey) {
     await chrome.storage.sync.set({ apiKey });
     await chrome.storage.sync.remove(["token"]);
   }
-  return { baseUrl, apiKey, enableRemoteUploadEmbeddedButton };
+  return {
+    baseUrl,
+    apiKey,
+    enableRemoteUploadEmbeddedButton,
+    smartUiAdaptation,
+    floatingFallbackButton,
+    autoDetectMedia,
+  };
 }
 
 export async function saveSettings(s: Partial<Settings>) {
@@ -53,6 +75,18 @@ export async function saveSettings(s: Partial<Settings>) {
 
   if (typeof s.enableRemoteUploadEmbeddedButton === "boolean") {
     patch.enableRemoteUploadEmbeddedButton = s.enableRemoteUploadEmbeddedButton;
+  }
+
+  if (typeof s.smartUiAdaptation === "boolean") {
+    patch[SMART_UI_ADAPTATION_KEY] = s.smartUiAdaptation;
+  }
+
+  if (typeof s.floatingFallbackButton === "boolean") {
+    patch[FLOATING_FALLBACK_BUTTON_KEY] = s.floatingFallbackButton;
+  }
+
+  if (typeof s.autoDetectMedia === "boolean") {
+    patch[AUTO_DETECT_MEDIA_KEY] = s.autoDetectMedia;
   }
 
   if (Object.keys(patch).length > 0) {

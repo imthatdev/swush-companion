@@ -16,7 +16,12 @@
  */
 
 import * as React from "react";
-import { clearSettings, getSettings, saveSettings } from "../lib/storage";
+import {
+  clearSettings,
+  getSettings,
+  saveSettings,
+  type Settings,
+} from "../lib/storage";
 import { pollDeviceToken, startDeviceFlow } from "../lib/api";
 
 type Tone = "muted" | "success" | "error";
@@ -25,6 +30,10 @@ export default function OptionsApp() {
   const [baseUrl, setBaseUrl] = React.useState("");
   const [apiKey, setApiKey] = React.useState("");
   const [enableEmbeddedButton, setEnableEmbeddedButton] = React.useState(false);
+  const [smartUiAdaptation, setSmartUiAdaptation] = React.useState(true);
+  const [floatingFallbackButton, setFloatingFallbackButton] =
+    React.useState(true);
+  const [autoDetectMedia, setAutoDetectMedia] = React.useState(true);
   const [status, setStatus] = React.useState<{ tone: Tone; message: string }>({
     tone: "muted",
     message: "",
@@ -42,7 +51,7 @@ export default function OptionsApp() {
   const [isSavingUrl, setIsSavingUrl] = React.useState(false);
   const [isSavingManualKey, setIsSavingManualKey] = React.useState(false);
   const [isDisconnecting, setIsDisconnecting] = React.useState(false);
-  const [isTogglingEmbedded, setIsTogglingEmbedded] = React.useState(false);
+  const [isSavingBehavior, setIsSavingBehavior] = React.useState(false);
 
   React.useEffect(() => {
     (async () => {
@@ -51,6 +60,9 @@ export default function OptionsApp() {
       setApiKey(s.apiKey || "");
       setManualKey(s.apiKey || "");
       setEnableEmbeddedButton(s.enableRemoteUploadEmbeddedButton === true);
+      setSmartUiAdaptation(s.smartUiAdaptation !== false);
+      setFloatingFallbackButton(s.floatingFallbackButton !== false);
+      setAutoDetectMedia(s.autoDetectMedia !== false);
     })();
   }, []);
 
@@ -183,25 +195,32 @@ export default function OptionsApp() {
     await clearSettings();
     setApiKey("");
     setManualKey("");
+    setEnableEmbeddedButton(true);
+    setSmartUiAdaptation(true);
+    setFloatingFallbackButton(true);
+    setAutoDetectMedia(true);
     setFlow(null);
     setPolling(false);
     setMessage("muted", "Disconnected.");
     setIsDisconnecting(false);
   }
 
-  async function toggleEmbeddedButton() {
-    if (isTogglingEmbedded) return;
-    setIsTogglingEmbedded(true);
-    const next = !enableEmbeddedButton;
-    setEnableEmbeddedButton(next);
-    await saveSettings({ enableRemoteUploadEmbeddedButton: next });
-    setMessage(
-      "success",
-      next
-        ? "Embedded remote-upload button enabled."
-        : "Embedded remote-upload button disabled.",
-    );
-    setIsTogglingEmbedded(false);
+  async function saveBehaviorToggle(
+    patch: Partial<Settings>,
+    applyLocalState: () => void,
+    message: string,
+  ) {
+    if (isSavingBehavior) return;
+    setIsSavingBehavior(true);
+    try {
+      await saveSettings(patch);
+      applyLocalState();
+      setMessage("success", message);
+    } catch (e: any) {
+      setMessage("error", e?.message || "Failed to update behavior setting.");
+    } finally {
+      setIsSavingBehavior(false);
+    }
   }
 
   return (
@@ -316,25 +335,112 @@ export default function OptionsApp() {
       </section>
 
       <section className="card">
-        <h2>Embedded remote upload button</h2>
-        <p>Show an on-page "Upload to Swush" button on supported pages.</p>
-        <div className="inline">
-          <button
-            type="button"
-            className={`toggle ${enableEmbeddedButton ? "toggle-on" : ""}`}
-            onClick={toggleEmbeddedButton}
-            disabled={isTogglingEmbedded}
-            aria-busy={isTogglingEmbedded}
-          >
-            <span className="toggle-knob" />
-          </button>
-          <div>
-            <div className="label">Enable remote upload embedded button</div>
-            <div className="helper">
-              {enableEmbeddedButton
-                ? "Enabled on supported sites."
-                : "Disabled."}
+        <h2>Embedded upload behavior</h2>
+        <p>
+          Master switch for on-page Upload to Swush buttons, plus behavior
+          controls for styling and fallback logic.
+        </p>
+        <div className="stack">
+          <div className="pref-row">
+            <div>
+              <div className="label">Enable remote upload embedded button</div>
+              <div className="helper">
+                {enableEmbeddedButton
+                  ? "Enabled for popup-whitelisted domains."
+                  : "Disabled."}
+              </div>
             </div>
+            <button
+              type="button"
+              className={`toggle ${enableEmbeddedButton ? "toggle-on" : ""}`}
+              onClick={() =>
+                void saveBehaviorToggle(
+                  {
+                    enableRemoteUploadEmbeddedButton: !enableEmbeddedButton,
+                  },
+                  () => setEnableEmbeddedButton((prev) => !prev),
+                  !enableEmbeddedButton
+                    ? "Embedded upload button enabled."
+                    : "Embedded upload button disabled.",
+                )
+              }
+              disabled={isSavingBehavior}
+            >
+              <span className="toggle-knob" />
+            </button>
+          </div>
+
+          <div className="pref-row">
+            <div>
+              <div className="label">Smart UI adaptation</div>
+              <div className="helper">Match native button styles per site.</div>
+            </div>
+            <button
+              type="button"
+              className={`toggle ${smartUiAdaptation ? "toggle-on" : ""}`}
+              onClick={() =>
+                void saveBehaviorToggle(
+                  { smartUiAdaptation: !smartUiAdaptation },
+                  () => setSmartUiAdaptation((prev) => !prev),
+                  !smartUiAdaptation
+                    ? "Smart UI adaptation enabled."
+                    : "Smart UI adaptation disabled.",
+                )
+              }
+              disabled={isSavingBehavior}
+            >
+              <span className="toggle-knob" />
+            </button>
+          </div>
+
+          <div className="pref-row">
+            <div>
+              <div className="label">Auto-detect nearby media</div>
+              <div className="helper">
+                Prefer direct media URLs when available.
+              </div>
+            </div>
+            <button
+              type="button"
+              className={`toggle ${autoDetectMedia ? "toggle-on" : ""}`}
+              onClick={() =>
+                void saveBehaviorToggle(
+                  { autoDetectMedia: !autoDetectMedia },
+                  () => setAutoDetectMedia((prev) => !prev),
+                  !autoDetectMedia
+                    ? "Auto media detection enabled."
+                    : "Auto media detection disabled.",
+                )
+              }
+              disabled={isSavingBehavior}
+            >
+              <span className="toggle-knob" />
+            </button>
+          </div>
+
+          <div className="pref-row">
+            <div>
+              <div className="label">Floating fallback button</div>
+              <div className="helper">
+                Show a floating action when inline placement is unavailable.
+              </div>
+            </div>
+            <button
+              type="button"
+              className={`toggle ${floatingFallbackButton ? "toggle-on" : ""}`}
+              onClick={() =>
+                void saveBehaviorToggle(
+                  { floatingFallbackButton: !floatingFallbackButton },
+                  () => setFloatingFallbackButton((prev) => !prev),
+                  !floatingFallbackButton
+                    ? "Floating fallback enabled."
+                    : "Floating fallback disabled.",
+                )
+              }
+              disabled={isSavingBehavior}
+            >
+              <span className="toggle-knob" />
+            </button>
           </div>
         </div>
       </section>

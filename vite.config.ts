@@ -25,10 +25,10 @@ const manifest = {
   name: "Swush Companion",
   description:
     "Shorten links, upload files/images, add notes/bookmarks to Swush.",
-  version: "2.4.0",
-  action: { default_title: "Swush", default_popup: "src/popup.html" },
-  options_page: "src/options.html",
-  background: { service_worker: "src/background.ts", type: "module" },
+  version: "2.5.0",
+  action: { default_title: "Swush", default_popup: "app/popup.html" },
+  options_page: "app/options.html",
+  background: { service_worker: "app/background.ts", type: "module" },
   icons: {
     "16": "icons/16.png",
     "48": "icons/48.png",
@@ -39,6 +39,7 @@ const manifest = {
     "activeTab",
     "scripting",
     "contextMenus",
+    "alarms",
     "notifications",
     "clipboardRead",
     "clipboardWrite",
@@ -47,7 +48,7 @@ const manifest = {
   content_scripts: [
     {
       matches: ["<all_urls>"],
-      js: ["src/content/x-overlay.ts"],
+      js: ["app/content/x-overlay.ts"],
       run_at: "document_idle",
     },
   ],
@@ -65,19 +66,30 @@ const manifest = {
       description: "Upload a file/image",
     },
   },
+  web_accessible_resources: [
+    {
+      matches: ["<all_urls>"],
+      resources: [
+        "icons/logo.png",
+        "icons/16.png",
+        "icons/48.png",
+        "icons/128.png",
+      ],
+    },
+  ],
 };
 
 export default defineConfig({
   plugins: [react(), crx({ manifest })],
-  resolve: { alias: { "@": path.resolve(__dirname, "src") } },
+  resolve: { alias: { "@": path.resolve(__dirname, "app") } },
   build: {
     outDir: "dist",
     sourcemap: false,
     target: "es2022",
     rollupOptions: {
       input: {
-        popup: "src/popup.html",
-        options: "src/options.html",
+        popup: "app/popup.html",
+        options: "app/options.html",
       },
     },
   },

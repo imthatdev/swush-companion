@@ -1,4 +1,5 @@
-dist
-node_modules
+node_modules/
+dist/
+extensions/
 swush-companion*
 .DS_Store
